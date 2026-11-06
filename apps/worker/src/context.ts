@@ -34,6 +34,7 @@ export async function buildContext(
   conversationKey: string,
   current: { id: number; text: string | null; createdAt: Date; userId: string | null },
   attachmentText?: string,
+  knowledgeText?: string,
 ): Promise<BuiltContext> {
   const stateRows = await db
     .select()
@@ -71,6 +72,7 @@ export async function buildContext(
     state?.summary ? `<summary>\n${trim(state.summary, 3000)}\n</summary>` : "",
     context ? `<conversation>\n${context}\n</conversation>` : "",
     attachmentText ? `<attachments>\n${trim(attachmentText, 8000)}\n</attachments>` : "",
+    knowledgeText ? `<knowledge>\n${trim(knowledgeText, 6000)}\n</knowledge>` : "",
     `<current_question>\n${current.text?.trim() || "（非文本消息）"}\n</current_question>`,
     "请直接回答当前问题。",
   ].filter(Boolean);

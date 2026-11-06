@@ -5,6 +5,7 @@ import { createDb, createLogger, loadConfig } from "@xiaoqi/core";
 import { DM_QUEUE, createDmQueue } from "./queue.js";
 import { OutboxDispatcher } from "./outbox.js";
 import { createDmHandler } from "./dm-handler.js";
+import { ReminderScheduler } from "./reminders.js";
 
 async function main() {
   const config = loadConfig();
@@ -13,7 +14,7 @@ async function main() {
   const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: null });
   const queue = createDmQueue(redis);
 
-  const worker = new Worker(DM_QUEUE, createDmHandler({ config, db: dbHandle.db, logger }), {
+  const worker = new Worker(DM_QUEUE, createDmHandler({ config, db: dbHandle.db, pool: dbHandle.pool, logger }), {
     connection: redis,
     concurrency: 4,
   });
@@ -23,6 +24,8 @@ async function main() {
 
   const dispatcher = new OutboxDispatcher({ pool: dbHandle.pool, queue, logger });
   dispatcher.start();
+  const reminders = new ReminderScheduler({ pool: dbHandle.pool, config, logger });
+  reminders.start();
 
   const health = http.createServer((req, res) => {
     if (req.url === "/healthz") {
@@ -43,6 +46,7 @@ async function main() {
     stopping = true;
     logger.info({ signal }, "worker shutting down");
     await dispatcher.stop();
+    await reminders.stop();
     await worker.close();
     await queue.close();
     await redis.quit().catch(() => undefined);

@@ -2,7 +2,7 @@
 
 **小栖（Xiaoqi）** 是微信里的私人 AI 助理，基于腾讯 **iLink Bot API**（微信 ClawBot）接入个人微信。
 
-> 当前阶段：**M3 已实现**（PDF/DOCX、DeepSeek 视觉、本地 OCR、摘要、命令）。下一步 M3b：提醒、知识库。  
+> 当前阶段：**M3b 已实现**（提醒 + 知识库）。下一步 M4：后台、预算、语义检索。  
 > 仓库名：`xiaoqi` · 品牌：**小栖 Xiaoqi** · Bot：**小栖**
 
 ## 文档
@@ -14,6 +14,7 @@
 | [M1 骨架](docs/m1.md) | 登录/轮询/落库/outbox/echo 的启动与验证 |
 | [M2 LLM](docs/m2.md) | 上下文、DeepSeek、typing、分段、失败兜底 |
 | [M3 文件与命令](docs/m3.md) | PDF/DOCX 抽取、DeepSeek 视觉 + macOS OCR、`/summary`、`/reset` |
+| [M3b 提醒与知识库](docs/m3b.md) | `/remind` 定时提醒、本地知识库 ingest/检索 |
 | [群助手设计（归档）](docs/design.md) | 原群聊方案，保留作历史/future 参考 |
 | [群版详细设计（归档）](docs/detailed-design/README.md) | 群聊实现级设计，future 参考 |
 | [协议探针](docs/protocol-probe.md) | Phase 0：群聊能力 Go/No-Go 验证清单 |
@@ -28,7 +29,7 @@
 ## 一句话方案
 
 - **入口**：微信私聊，直接发问题，不需要 @；
-- **能力**：上下文问答、DeepSeek 回答、PDF/DOCX、图片视觉 + OCR、摘要、命令；提醒/知识库在 M3b；
+- **能力**：上下文问答、DeepSeek 回答、PDF/DOCX、图片视觉 + OCR、摘要、提醒、知识库；
 - **架构**：TypeScript 模块化单体；gateway 管长轮询/发送，worker 管 Agent，Postgres + Redis；
 - **原则**：不打扰、可删除、可停用、可追溯。
 
@@ -41,6 +42,6 @@
 
 ## 下一步
 
-1. 私聊 `/help` 验证命令；
-2. 发一个 PDF 验证抽取与回答；
-3. 进入 M3b：提醒、知识库、图片识别。
+1. 私聊 `/remind 1分钟后 测试` 验证提醒；
+2. 放一份资料到 `knowledge/` 并 `pnpm kb:ingest`；
+3. 进入 M4：后台、预算、语义检索。

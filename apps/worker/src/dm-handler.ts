@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { Job } from "bullmq";
 import { eq } from "drizzle-orm";
+import type { Pool } from "pg";
 import type { AppConfig, Database, Logger, MessageRow } from "@xiaoqi/core";
 import { messages, runs, users } from "@xiaoqi/core";
 import { buildContext } from "./context.js";
@@ -8,6 +9,7 @@ import { handleCommand, parseCommand } from "./commands.js";
 import { chunkReply, sanitizeReply } from "./format.js";
 import { chat } from "./llm.js";
 import { extractAttachments } from "./media.js";
+import { searchKnowledge } from "./kb.js";
 
 interface DmJob {
   accountId: string;
@@ -17,11 +19,12 @@ interface DmJob {
 export interface DmHandlerDeps {
   config: AppConfig;
   db: Database;
+  pool: Pool;
   logger: Logger;
 }
 
 export function createDmHandler(deps: DmHandlerDeps) {
-  const { config, db, logger } = deps;
+  const { config, db, pool, logger } = deps;
 
   async function typing(replyToMessageId: number, on: boolean): Promise<void> {
     try {
@@ -177,6 +180,13 @@ export function createDmHandler(deps: DmHandlerDeps) {
     try {
       const attachmentText = await extractAttachments(db, config, msg);
       const currentQuestion = msg.text?.trim() || (attachmentText ? "请分析我发的附件" : "（非文本消息）");
+      let knowledgeText = "";
+      try {
+        const hits = await searchKnowledge(pool, currentQuestion, 5);
+        knowledgeText = hits.map((h) => `[${h.title}]\n${h.content}`).join("\n\n");
+      } catch (err) {
+        logger.warn({ err }, "knowledge search failed");
+      }
       const context = await buildContext(
         db,
         msg.conversationKey,
@@ -187,6 +197,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
           userId: msg.userId,
         },
         attachmentText,
+        knowledgeText,
       );
       logger.info(
         {

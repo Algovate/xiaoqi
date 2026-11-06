@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "kb:ingest": "tsx src/kb-ingest.ts"
   },
   "dependencies": {
     "@xiaoqi/core": "workspace:*",

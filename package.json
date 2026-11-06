@@ -13,7 +13,8 @@
     "test": "vitest run",
     "fake:ilink": "node poc/fake-ilink.mjs",
     "ilink:login": "pnpm --filter @xiaoqi/gateway auth",
-    "ocr:build": "bash scripts/build-ocr.sh"
+    "ocr:build": "bash scripts/build-ocr.sh",
+    "kb:ingest": "pnpm --filter @xiaoqi/worker kb:ingest"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

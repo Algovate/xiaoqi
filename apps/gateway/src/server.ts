@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import Fastify, { type FastifyBaseLogger } from "fastify";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -23,6 +24,13 @@ const SendSchema = z.object({
 const TypingSchema = z.object({
   replyToMessageId: z.string().regex(/^\d+$/),
   on: z.boolean(),
+});
+
+const ProactiveSchema = z.object({
+  accountId: z.string().uuid(),
+  conversationKey: z.string().startsWith("dm:"),
+  text: z.string().min(1).max(4000),
+  reminderId: z.string().uuid().optional(),
 });
 
 export interface ServerDeps {
@@ -168,6 +176,109 @@ export async function buildServer(deps: ServerDeps) {
         .set({ status: "failed", errorCode: "SEND_FAILED" })
         .where(eq(outboundMessages.id, outbound.id));
       req.log.error({ err, runId: input.runId }, "send failed");
+      throw new AppError({ code: "SEND_FAILED", message, httpStatus: 502, retryable: true });
+    }
+  });
+
+  app.post("/internal/v1/send-proactive", async (req, reply) => {
+    const parsed = ProactiveSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: "VALIDATION_ERROR", message: "bad proactive payload" } });
+    }
+    const { accountId, conversationKey, text } = parsed.data;
+
+    const accountRows = await db.select().from(accounts).where(eq(accounts.id, accountId)).limit(1);
+    const account = accountRows[0];
+    if (!account?.tokenEnc) {
+      return reply.code(409).send({ error: { code: "ACCOUNT_NOT_READY", message: "no account token" } });
+    }
+
+    const tokenRows = await db
+      .select()
+      .from(contextTokens)
+      .where(
+        and(eq(contextTokens.accountId, accountId), eq(contextTokens.conversationKey, conversationKey)),
+      )
+      .limit(1);
+    if (!tokenRows[0]) {
+      return reply.code(409).send({ error: { code: "CONTEXT_TOKEN_MISSING", message: "no context token" } });
+    }
+
+    const target = conversationKey.slice("dm:".length);
+    const botToken = decryptSecret(account.tokenEnc, config.masterKey);
+    const contextToken = decryptSecret(tokenRows[0].tokenEnc, config.masterKey);
+
+    const runRows = await db
+      .insert(runs)
+      .values({
+        accountId,
+        status: "running",
+        model: "reminder",
+        promptVersion: "reminder@2026-11-06.1",
+        traceId: crypto.randomUUID(),
+      })
+      .returning();
+    const run = runRows[0]!;
+
+    await db
+      .insert(outboundMessages)
+      .values({ runId: run.id, chunkIndex: 0, status: "pending" })
+      .onConflictDoNothing();
+
+    try {
+      const client = new ILinkClient({
+        baseUrl: account.baseUrl,
+        token: botToken,
+        appId: config.ILINK_APP_ID,
+        clientVersion: config.ILINK_APP_VERSION,
+      });
+      const resp = await client.sendText({
+        toUserId: target,
+        contextToken,
+        text,
+        clientId: `xiaoqi-reminder-${run.id}`,
+      });
+      const wxMessageId = String(
+        (resp as { message_id?: unknown }).message_id ??
+          (resp as { msg?: { message_id?: unknown } }).msg?.message_id ??
+          "",
+      );
+      await db
+        .update(outboundMessages)
+        .set({ status: "sent", wxMessageId, sentAt: new Date() })
+        .where(eq(outboundMessages.runId, run.id));
+      await db
+        .update(runs)
+        .set({ status: "sent", finishedAt: new Date() })
+        .where(eq(runs.id, run.id));
+      if (wxMessageId) {
+        await db
+          .insert(messages)
+          .values({
+            accountId,
+            conversationKey,
+            wxMessageId,
+            senderId: account.ilinkBotId,
+            direction: "out",
+            messageType: 2,
+            itemType: "text",
+            text,
+            createdAt: new Date(),
+          })
+          .onConflictDoNothing();
+      }
+      return { ok: true, wxMessageId, runId: run.id };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await db
+        .update(outboundMessages)
+        .set({ status: "failed", errorCode: "SEND_FAILED" })
+        .where(eq(outboundMessages.runId, run.id));
+      await db
+        .update(runs)
+        .set({ status: "failed", errorCode: "SEND_FAILED", finishedAt: new Date() })
+        .where(eq(runs.id, run.id));
+      req.log.error({ err, accountId, conversationKey }, "proactive send failed");
       throw new AppError({ code: "SEND_FAILED", message, httpStatus: 502, retryable: true });
     }
   });

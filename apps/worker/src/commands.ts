@@ -1,6 +1,7 @@
 import { and, desc, eq, gt } from "drizzle-orm";
 import type { AppConfig, Database, MessageRow, UserRow } from "@xiaoqi/core";
-import { conversationState, messages } from "@xiaoqi/core";
+import { conversationState, messages, reminders } from "@xiaoqi/core";
+import { formatShanghai, parseReminder } from "./time.js";
 import { chat } from "./llm.js";
 
 export interface Command {
@@ -14,6 +15,7 @@ export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
 
 可用命令：
 /summary  总结最近对话
+/remind 明天10点 交周报  设置提醒
 /reset    清除上下文
 /whoami   查看你的 ID
 /help     显示这条帮助`;
@@ -49,6 +51,20 @@ export async function handleCommand(
       return "已清除当前对话的上下文。";
     case "summary":
       return summarize(deps, msg, user);
+    case "remind": {
+      const parsed = parseReminder(command.args);
+      if (!parsed) {
+        return "时间格式没看懂。试试：\n/remind 明天10点 交周报\n/remind 周五18:00 发版检查\n/remind 30分钟后 喝水";
+      }
+      await deps.db.insert(reminders).values({
+        accountId: msg.accountId,
+        userId: msg.userId,
+        conversationKey: msg.conversationKey,
+        text: parsed.text,
+        runAt: parsed.runAt,
+      });
+      return `已设置提醒：${formatShanghai(parsed.runAt)}\n${parsed.text}`;
+    }
     default:
       return `不认识 /${command.name}。\n\n${HELP_TEXT}`;
   }
