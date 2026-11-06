@@ -1,0 +1,42 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang SC, Hiragino Sans GB, sans-serif','fontSize':'14px','primaryColor':'#FAFAF9','primaryBorderColor':'#A8A29E','primaryTextColor':'#1C1917','lineColor':'#78716C','clusterBkg':'#F5F5F4','clusterBorder':'#D6D3D1','edgeLabelBackground':'#FFFFFF'}}}%%
+flowchart LR
+  subgraph WX["微信"]
+    U["群成员"]
+    C["微信客户端"]
+  end
+
+  subgraph TC["腾讯 iLink（官方通道）"]
+    API["Bot API<br/>getupdates / sendmessage"]
+    CDN["媒体 CDN<br/>AES-128-ECB"]
+  end
+
+  subgraph HOST["自托管 · Docker Compose"]
+    GW["gateway<br/>扫码登录 · 长轮询 · 发送 · 限流"]
+    ADM["api<br/>管理 API · SSE"]
+    WK["worker<br/>Agent 编排 · 工具 · 摘要"]
+    WEB["admin<br/>React SPA"]
+    PG[("PostgreSQL 16<br/>pgvector")]
+    RD[("Redis 7<br/>队列 / 锁 / 限流")]
+    FS[("媒体存储<br/>本地卷 / S3")]
+  end
+
+  LLM["LLM / Embedding<br/>OpenAI-compatible"]
+
+  U --> C --> API
+  API <--> GW
+  CDN <--> GW
+  GW --> PG
+  GW --> RD
+  RD --> WK
+  WK --> PG
+  WK --> LLM
+  WK --> GW
+  WK --> FS
+  WEB --> ADM
+  ADM --> PG
+  ADM --> GW
+
+  classDef external fill:#ECFDF5,stroke:#059669,color:#064E3B
+  classDef data fill:#F5F5F4,stroke:#78716C,color:#1C1917
+  class API,CDN,LLM external
+  class PG,RD,FS data

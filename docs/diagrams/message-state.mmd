@@ -1,0 +1,14 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang SC, Hiragino Sans GB, sans-serif','fontSize':'14px','primaryColor':'#FAFAF9','primaryBorderColor':'#A8A29E','primaryTextColor':'#1C1917','lineColor':'#78716C'}}}%%
+stateDiagram-v2
+  [*] --> received
+  received --> normalized: 解析 / 去重
+  normalized --> queued: 事务 outbox
+  queued --> running: 获取群锁
+  running --> sending: 生成完成
+  sending --> sent: iLink 返回 ret=0
+  running --> failed: LLM / 工具错误
+  sending --> failed: 发送失败
+  failed --> queued: 可重试且 attempts < 3
+  failed --> dead: 超过重试或不可重试
+  sent --> [*]
+  dead --> [*]

@@ -1,0 +1,17 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang SC, Hiragino Sans GB, sans-serif','fontSize':'14px','primaryColor':'#FAFAF9','primaryBorderColor':'#A8A29E','primaryTextColor':'#1C1917','lineColor':'#78716C'}}}%%
+stateDiagram-v2
+  [*] --> idle
+  idle --> qr_pending: startLogin
+  qr_pending --> scanned: status=scaned
+  qr_pending --> expired: status=expired
+  qr_pending --> verify_required: status=need_verifycode
+  verify_required --> scanned: 提交验证码
+  scanned --> confirmed: status=confirmed
+  scanned --> expired: 超时/取消
+  confirmed --> active: token 落库
+  active --> expired: errcode=-14
+  expired --> qr_pending: 重新扫码
+  qr_pending --> failed: 网络/协议错误
+  failed --> qr_pending: 重试
+  active --> disabled: 管理员停用
+  disabled --> qr_pending: 重新绑定

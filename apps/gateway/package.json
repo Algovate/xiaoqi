@@ -1,0 +1,20 @@
+{
+  "name": "@xiaoqi/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "auth": "tsx src/login-cli.ts"
+  },
+  "dependencies": {
+    "@xiaoqi/core": "workspace:*",
+    "@xiaoqi/ilink": "workspace:*",
+    "fastify": "^5.4.0",
+    "ioredis": "^5.6.0",
+    "zod": "^4.0.0",
+    "drizzle-orm": "^0.45.0"
+  }
+}

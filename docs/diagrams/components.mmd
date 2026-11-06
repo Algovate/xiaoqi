@@ -1,0 +1,32 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang SC, Hiragino Sans GB, sans-serif','fontSize':'13px','primaryColor':'#FAFAF9','primaryBorderColor':'#A8A29E','primaryTextColor':'#1C1917','lineColor':'#78716C'}}}%%
+flowchart TB
+  subgraph APP["应用进程"]
+    WEB["web<br/>React SPA"]
+    API["api<br/>管理 API · SSE"]
+    GW["gateway<br/>iLink 协议边缘"]
+    WK["worker<br/>消息流水线 · Agent"]
+  end
+
+  subgraph INFRA["基础设施"]
+    PG[("PostgreSQL<br/>事实源")]
+    RD[("Redis<br/>队列 / 锁 / 限流")]
+    FS[("媒体卷")]
+  end
+
+  subgraph EXT["外部"]
+    IL["iLink Bot API"]
+    LLM["LLM / Embedding"]
+  end
+
+  WEB -->|"HTTPS /api/v1"| API
+  API --> PG
+  API -->|"内部 API"| GW
+  GW <--> IL
+  GW --> PG
+  GW --> RD
+  WK --> PG
+  WK --> FS
+  WK --> LLM
+  WK -->|"发送 / typing"| GW
+  RD -->|"BullMQ"| WK
+  GW -->|"outbox"| RD

@@ -1,0 +1,24 @@
+{
+  "name": "xiaoqi",
+  "private": true,
+  "version": "0.1.0",
+  "description": "小栖 Xiaoqi · 微信私聊 AI 助理",
+  "type": "module",
+  "packageManager": "pnpm@11.18.0",
+  "scripts": {
+    "dev:gateway": "pnpm --filter @xiaoqi/gateway dev",
+    "dev:worker": "pnpm --filter @xiaoqi/worker dev",
+    "db:migrate": "pnpm --filter @xiaoqi/core migrate",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "fake:ilink": "node poc/fake-ilink.mjs",
+    "ilink:login": "pnpm --filter @xiaoqi/gateway auth"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

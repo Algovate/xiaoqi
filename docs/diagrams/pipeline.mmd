@@ -1,0 +1,25 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'PingFang SC, Hiragino Sans GB, sans-serif','fontSize':'13px','primaryColor':'#FAFAF9','primaryBorderColor':'#A8A29E','primaryTextColor':'#1C1917','lineColor':'#78716C','actorBkg':'#F5F5F4','actorBorder':'#78716C','noteBkgColor':'#FEF3C7','noteBorderColor':'#D97706'}}}%%
+sequenceDiagram
+  autonumber
+  participant WX as 微信群
+  participant IL as iLink
+  participant GW as Gateway
+  participant DB as PostgreSQL
+  participant Q as Redis / BullMQ
+  participant WK as Worker
+  participant LLM as LLM
+
+  WX->>IL: @小栖 这个方案有什么风险？
+  IL-->>GW: getupdates 长轮询返回消息
+  GW->>DB: 事务写入 message + 游标 + outbox
+  GW->>Q: 投递 agent job
+  GW-->>IL: sendtyping（可选）
+  Q->>WK: 消费 job（按群串行）
+  WK->>DB: 读取上下文 / 引用 / 附件
+  WK->>LLM: 生成回答（可带 RAG 与工具）
+  LLM-->>WK: tokens
+  WK->>DB: 记录 run / token / 成本
+  WK->>GW: 发送回答（分段）
+  GW->>IL: sendmessage（回传 context_token）
+  IL-->>WX: 群内回复
+  Note over GW,DB: 失败重试 ≤3 次；超限进入死信并告警
