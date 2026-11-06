@@ -13,6 +13,7 @@ import {
   runs,
 } from "@xiaoqi/core";
 import { ILinkClient } from "@xiaoqi/ilink";
+import { loadSendContext, recordOutbound, sendText } from "./outbound.js";
 
 const SendSchema = z.object({
   runId: z.string().uuid(),
@@ -99,75 +100,33 @@ export async function buildServer(deps: ServerDeps) {
       return { ok: true, wxMessageId: outbound.wxMessageId, sentAt: outbound.sentAt, deduplicated: true };
     }
 
-    const accountRows = await db.select().from(accounts).where(eq(accounts.id, run.accountId)).limit(1);
-    const account = accountRows[0];
-    if (!account?.tokenEnc) {
-      throw new AppError({ code: "ACCOUNT_NOT_READY", message: "account has no token", httpStatus: 409 });
-    }
-
-    const tokenRows = await db
-      .select()
-      .from(contextTokens)
-      .where(
-        and(
-          eq(contextTokens.accountId, run.accountId),
-          eq(contextTokens.conversationKey, source.conversationKey),
-        ),
-      )
-      .limit(1);
-    const tokenRow = tokenRows[0];
-    if (!tokenRow) {
-      throw new AppError({
-        code: "CONTEXT_TOKEN_MISSING",
-        message: "no context token for conversation",
-        httpStatus: 409,
-      });
-    }
-
-    const botToken = decryptSecret(account.tokenEnc, config.masterKey);
-    const contextToken = decryptSecret(tokenRow.tokenEnc, config.masterKey);
-    const client = new ILinkClient({
-      baseUrl: account.baseUrl,
-      token: botToken,
-      appId: config.ILINK_APP_ID,
-      clientVersion: config.ILINK_APP_VERSION,
-    });
+    const sendContext = await loadSendContext(
+      db,
+      config,
+      run.accountId,
+      source.conversationKey,
+      source.senderId,
+    );
 
     try {
-      const resp = await client.sendText({
-        toUserId: source.senderId,
-        contextToken,
-        text: input.text,
-        clientId: `xiaoqi-${input.runId}-${input.chunkIndex}`,
-      });
-      const wxMessageId = String(
-        (resp as { message_id?: unknown }).message_id ??
-          (resp as { msg?: { message_id?: unknown } }).msg?.message_id ??
-          "",
+      const { wxMessageId } = await sendText(
+        config,
+        sendContext,
+        input.text,
+        `xiaoqi-${input.runId}-${input.chunkIndex}`,
       );
       await db
         .update(outboundMessages)
         .set({ status: "sent", wxMessageId, sentAt: new Date() })
         .where(eq(outboundMessages.id, outbound.id));
-
-      if (wxMessageId) {
-        await db
-          .insert(messages)
-          .values({
-            accountId: run.accountId,
-            userId: source.userId,
-            conversationKey: source.conversationKey,
-            wxMessageId,
-            senderId: account.ilinkBotId,
-            direction: "out",
-            messageType: 2,
-            itemType: "text",
-            text: input.text,
-            createdAt: new Date(),
-          })
-          .onConflictDoNothing();
-      }
-
+      await recordOutbound(db, {
+        accountId: run.accountId,
+        userId: source.userId,
+        conversationKey: source.conversationKey,
+        senderId: sendContext.account.ilinkBotId,
+        wxMessageId,
+        text: input.text,
+      });
       return { ok: true, wxMessageId, sentAt: new Date().toISOString(), deduplicated: false };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -187,26 +146,7 @@ export async function buildServer(deps: ServerDeps) {
     }
     const { accountId, conversationKey, text } = parsed.data;
 
-    const accountRows = await db.select().from(accounts).where(eq(accounts.id, accountId)).limit(1);
-    const account = accountRows[0];
-    if (!account?.tokenEnc) {
-      return reply.code(409).send({ error: { code: "ACCOUNT_NOT_READY", message: "no account token" } });
-    }
-
-    const tokenRows = await db
-      .select()
-      .from(contextTokens)
-      .where(
-        and(eq(contextTokens.accountId, accountId), eq(contextTokens.conversationKey, conversationKey)),
-      )
-      .limit(1);
-    if (!tokenRows[0]) {
-      return reply.code(409).send({ error: { code: "CONTEXT_TOKEN_MISSING", message: "no context token" } });
-    }
-
-    const target = conversationKey.slice("dm:".length);
-    const botToken = decryptSecret(account.tokenEnc, config.masterKey);
-    const contextToken = decryptSecret(tokenRows[0].tokenEnc, config.masterKey);
+    const sendContext = await loadSendContext(db, config, accountId, conversationKey);
 
     const runRows = await db
       .insert(runs)
@@ -226,23 +166,7 @@ export async function buildServer(deps: ServerDeps) {
       .onConflictDoNothing();
 
     try {
-      const client = new ILinkClient({
-        baseUrl: account.baseUrl,
-        token: botToken,
-        appId: config.ILINK_APP_ID,
-        clientVersion: config.ILINK_APP_VERSION,
-      });
-      const resp = await client.sendText({
-        toUserId: target,
-        contextToken,
-        text,
-        clientId: `xiaoqi-reminder-${run.id}`,
-      });
-      const wxMessageId = String(
-        (resp as { message_id?: unknown }).message_id ??
-          (resp as { msg?: { message_id?: unknown } }).msg?.message_id ??
-          "",
-      );
+      const { wxMessageId } = await sendText(config, sendContext, text, `xiaoqi-reminder-${run.id}`);
       await db
         .update(outboundMessages)
         .set({ status: "sent", wxMessageId, sentAt: new Date() })
@@ -251,22 +175,14 @@ export async function buildServer(deps: ServerDeps) {
         .update(runs)
         .set({ status: "sent", finishedAt: new Date() })
         .where(eq(runs.id, run.id));
-      if (wxMessageId) {
-        await db
-          .insert(messages)
-          .values({
-            accountId,
-            conversationKey,
-            wxMessageId,
-            senderId: account.ilinkBotId,
-            direction: "out",
-            messageType: 2,
-            itemType: "text",
-            text,
-            createdAt: new Date(),
-          })
-          .onConflictDoNothing();
-      }
+      await recordOutbound(db, {
+        accountId,
+        userId: null,
+        conversationKey,
+        senderId: sendContext.account.ilinkBotId,
+        wxMessageId,
+        text,
+      });
       return { ok: true, wxMessageId, runId: run.id };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

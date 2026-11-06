@@ -4,12 +4,9 @@ import { eq } from "drizzle-orm";
 import type { Pool } from "pg";
 import type { AppConfig, Database, Logger, MessageRow } from "@xiaoqi/core";
 import { messages, runs, users } from "@xiaoqi/core";
-import { buildContext } from "./context.js";
+import { generateAnswer } from "./answer.js";
 import { handleCommand, parseCommand } from "./commands.js";
-import { chunkReply, sanitizeReply } from "./format.js";
-import { chat } from "./llm.js";
-import { extractAttachments } from "./media.js";
-import { searchKnowledge } from "./kb.js";
+import { chunkReply } from "./format.js";
 import { dailyTokensUsed } from "./budget.js";
 
 interface DmJob {
@@ -202,48 +199,13 @@ export function createDmHandler(deps: DmHandlerDeps) {
     let completionTokens = 0;
     let model = config.LLM_MODEL;
 
-    try {
-      const attachmentText = await extractAttachments(db, config, msg);
-      const currentQuestion = msg.text?.trim() || (attachmentText ? "请分析我发的附件" : "（非文本消息）");
-      let knowledgeText = "";
-      try {
-        const hits = await searchKnowledge(pool, currentQuestion, 5);
-        knowledgeText = hits.map((h) => `[${h.title}]\n${h.content}`).join("\n\n");
-      } catch (err) {
-        logger.warn({ err }, "knowledge search failed");
-      }
-      const context = await buildContext(
-        db,
-        msg.conversationKey,
-        {
-          id: msg.id,
-          text: currentQuestion,
-          createdAt: msg.createdAt,
-          userId: msg.userId,
-        },
-        attachmentText,
-        knowledgeText,
-      );
-      logger.info(
-        {
-          runId: run.id,
-          contextMessages: context.messageCount,
-          attachmentChars: attachmentText.length,
-        },
-        "calling llm",
-      );
-      const result = await chat(config, [
-        { role: "system", content: context.system },
-        { role: "user", content: context.user },
-      ]);
-      replyText = sanitizeReply(result.content);
-      promptTokens = result.promptTokens;
-      completionTokens = result.completionTokens;
-      model = result.model;
-    } catch (err) {
-      errorCode = "LLM_FAILED";
-      replyText = `这次没答上来，稍后再试。（trace: ${(run.traceId ?? "").slice(0, 8)}）`;
-      logger.error({ err, runId: run.id }, "llm failed; sending fallback");
+    {
+      const answer = await generateAnswer({ config, db, pool, logger }, msg, run.id, run.traceId, user);
+      replyText = answer.text;
+      errorCode = answer.errorCode;
+      promptTokens = answer.promptTokens;
+      completionTokens = answer.completionTokens;
+      model = answer.model;
     }
 
     try {

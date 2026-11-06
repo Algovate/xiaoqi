@@ -25,7 +25,7 @@ const EnvSchema = z.object({
   WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(4102),
   API_PORT: z.coerce.number().int().positive().default(4100),
   API_HOST: z.string().min(1).default("127.0.0.1"),
-  ADMIN_TOKEN: z.string().min(8),
+  ADMIN_TOKEN: z.string().default(""),
   MAX_DAILY_TOKENS: z.coerce.number().int().positive().default(100_000),
   MEDIA_DIR: z.string().min(1).default("./data/media"),
   OCR_ENABLED: z.enum(["auto", "true", "false"]).default("auto"),

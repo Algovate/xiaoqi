@@ -3,6 +3,9 @@ import { buildApi } from "./server.js";
 
 async function main() {
   const config = loadConfig();
+  if (config.ADMIN_TOKEN.length < 8) {
+    throw new Error("ADMIN_TOKEN 未配置或太短（至少 8 字符）");
+  }
   const logger = createLogger("api", config.LOG_LEVEL);
   const dbHandle = createDb(config.DATABASE_URL);
   const app = await buildApi({ config, dbHandle, logger });
