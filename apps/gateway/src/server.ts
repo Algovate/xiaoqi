@@ -5,9 +5,6 @@ import { z } from "zod";
 import type { AppConfig, DbHandle, Logger } from "@xiaoqi/core";
 import {
   AppError,
-  accounts,
-  contextTokens,
-  decryptSecret,
   messages,
   outboundMessages,
   runs,
@@ -16,8 +13,8 @@ import {
   metricsContentType,
   metricsText,
 } from "@xiaoqi/core";
-import { ILinkClient } from "@xiaoqi/ilink";
 import { loadSendContext, recordOutbound, sendText } from "./outbound.js";
+import { createTypingService } from "./typing.js";
 
 const SendSchema = z.object({
   runId: z.string().uuid(),
@@ -47,7 +44,7 @@ export interface ServerDeps {
 export async function buildServer(deps: ServerDeps) {
   const { config, dbHandle, logger } = deps;
   const { db } = dbHandle;
-  const typingTickets = new Map<string, string>();
+  const typingService = createTypingService({ config, db, logger });
   const app = Fastify({ loggerInstance: logger as unknown as FastifyBaseLogger });
 
   app.addHook("onRequest", async (req, reply) => {
@@ -221,53 +218,7 @@ export async function buildServer(deps: ServerDeps) {
     if (!parsed.success) {
       return reply.code(400).send({ error: { code: "VALIDATION_ERROR", message: "bad typing payload" } });
     }
-    const sourceRows = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.id, Number(parsed.data.replyToMessageId)))
-      .limit(1);
-    const source = sourceRows[0];
-    if (!source) return reply.code(404).send({ error: { code: "MESSAGE_NOT_FOUND", message: "not found" } });
-
-    const accountRows = await db.select().from(accounts).where(eq(accounts.id, source.accountId)).limit(1);
-    const account = accountRows[0];
-    if (!account?.tokenEnc) return { ok: false, reason: "ACCOUNT_NOT_READY" };
-
-    const tokenRows = await db
-      .select()
-      .from(contextTokens)
-      .where(
-        and(
-          eq(contextTokens.accountId, source.accountId),
-          eq(contextTokens.conversationKey, source.conversationKey),
-        ),
-      )
-      .limit(1);
-    if (!tokenRows[0]) return { ok: false, reason: "CONTEXT_TOKEN_MISSING" };
-
-    try {
-      const botToken = decryptSecret(account.tokenEnc, config.masterKey);
-      const contextToken = decryptSecret(tokenRows[0].tokenEnc, config.masterKey);
-      const client = new ILinkClient({
-        baseUrl: account.baseUrl,
-        token: botToken,
-        appId: config.ILINK_APP_ID,
-        clientVersion: config.ILINK_APP_VERSION,
-      });
-      const cacheKey = `${source.accountId}:${source.senderId}`;
-      let ticket = typingTickets.get(cacheKey);
-      if (!ticket) {
-        const cfg = await client.getConfig(source.senderId, contextToken);
-        ticket = cfg.typing_ticket;
-        if (ticket) typingTickets.set(cacheKey, ticket);
-      }
-      if (!ticket) return { ok: false, reason: "NO_TYPING_TICKET" };
-      await client.sendTyping(source.senderId, ticket, parsed.data.on);
-      return { ok: true };
-    } catch (err) {
-      req.log.debug({ err }, "typing failed");
-      return { ok: false, reason: "TYPING_FAILED" };
-    }
+    return typingService.setTyping(Number(parsed.data.replyToMessageId), parsed.data.on);
   });
 
   app.setErrorHandler((err, req, reply) => {
