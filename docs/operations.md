@@ -60,6 +60,7 @@ x-admin-token: <ADMIN_TOKEN>
 | `CODEX_TIMEOUT_MS` |  | 默认 900000 |
 | `DSH_BIN` |  | 默认 `dsh` |
 | `DSH_TIMEOUT_MS` |  | 默认 900000 |
+| `WELCOME_MESSAGE` |  | 首次欢迎语；留空用默认文案 |
 
 生成密钥：
 
@@ -83,6 +84,16 @@ openssl rand -hex 24      # INTERNAL_TOKEN / ADMIN_TOKEN
 /codex resume <id> 继续
 /dsh xiaoqi 分析仓库
 ```
+
+### 欢迎语
+
+新用户第一条消息前会发送一次欢迎语。自定义：
+
+```dotenv
+WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或发图片/PDF 让我看。\n/help 查看命令。"
+```
+
+想对老用户重发，把 `users.welcomed_at` 置空即可。
 
 ---
 

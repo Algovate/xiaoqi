@@ -6,6 +6,7 @@ import type { AppConfig, Database, Logger, MessageRow } from "@xiaoqi/core";
 import { agentDuration, budgetExceeded, llmTokens, messages, runs, runsTotal, users } from "@xiaoqi/core";
 import { generateAnswer } from "./answer.js";
 import { handleCommand, parseCommand } from "./commands.js";
+import { welcomeText } from "./welcome.js";
 import { chunkReply } from "./format.js";
 import { dailyTokensUsed } from "./budget.js";
 import { maybeAlertBudget } from "./alerts.js";
@@ -82,6 +83,8 @@ export function createDmHandler(deps: DmHandlerDeps) {
       ? await db.select().from(users).where(eq(users.id, msg.userId)).limit(1)
       : [];
     const user = userRows[0] ?? null;
+    const firstVisit = Boolean(user && !user.welcomedAt);
+    const welcomePrefix = firstVisit ? `${welcomeText(config)}\n\n` : "";
 
     const existing = await db
       .select()
@@ -164,7 +167,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
       let reply: string;
       let commandError: string | null = null;
       try {
-        reply = await handleCommand({ db, config }, msg, user, command);
+        reply = welcomePrefix + (await handleCommand({ db, config }, msg, user, command));
       } catch (err) {
         commandError = "COMMAND_FAILED";
         reply = "这个命令没处理好，稍后再试。";
@@ -184,6 +187,9 @@ export function createDmHandler(deps: DmHandlerDeps) {
           })
           .where(eq(runs.id, run.id));
         runsTotal.inc({ status: commandError ? "failed" : "sent" });
+        if (firstVisit && user) {
+          await db.update(users).set({ welcomedAt: new Date() }).where(eq(users.id, user.id));
+        }
         logger.info({ runId: run.id, command: command.name, chunks }, "command handled");
         return;
       } catch (err) {
@@ -210,7 +216,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
 
     {
       const answer = await generateAnswer({ config, db, pool, logger }, msg, run.id, run.traceId, user);
-      replyText = answer.text;
+      replyText = welcomePrefix + answer.text;
       errorCode = answer.errorCode;
       promptTokens = answer.promptTokens;
       completionTokens = answer.completionTokens;
@@ -235,6 +241,9 @@ export function createDmHandler(deps: DmHandlerDeps) {
       agentDuration.observe({ model }, (Date.now() - startedAt) / 1000);
       llmTokens.inc({ type: "prompt" }, promptTokens);
       llmTokens.inc({ type: "completion" }, completionTokens);
+      if (firstVisit && user) {
+        await db.update(users).set({ welcomedAt: new Date() }).where(eq(users.id, user.id));
+      }
       logger.info({ runId: run.id, chunks, errorCode, model }, "dm answer sent");
     } catch (err) {
       runsTotal.inc({ status: "failed" });

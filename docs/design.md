@@ -48,7 +48,13 @@ api    ← PostgreSQL（Admin 读模型 + 静态页面）
 
 ## 3. 主要流程
 
-### 3.1 私聊消息
+### 3.1 首次欢迎
+
+- 新用户的第一条消息会在回答前插入欢迎语；
+- `users.welcomed_at` 记录是否已发，只发一次；
+- 文案可用 `WELCOME_MESSAGE` 覆盖，默认见 `apps/worker/src/welcome.ts`。
+
+### 3.2 私聊消息
 
 ```text
 getupdates
@@ -69,20 +75,20 @@ getupdates
 - 发送幂等键 `(run_id, chunk_index)`。
 - 游标只在事务提交后推进。
 
-### 3.2 图片/文件
+### 3.3 图片/文件
 
 - 网关只落原始消息；worker 在回答前下载 CDN、AES-128-ECB 解密。
 - 图片：DeepSeek Flash 视觉描述；失败回退 macOS Apple Vision OCR。
 - PDF/DOCX/TXT/MD：`unpdf` / `mammoth` / 直接读取。
 - 提取文本只注入**当前轮**；持久知识库走 `knowledge/`。
 
-### 3.3 提醒
+### 3.4 提醒
 
 - `/remind` 解析为 `reminders` 行（Asia/Shanghai）。
 - worker 每 20s 扫描到期任务，调 gateway `/internal/v1/send-proactive`。
 - 需要最近 `context_token`；过期则失败并记录。
 
-### 3.4 Codex / DSH
+### 3.5 Codex / DSH
 
 - `/codex <repo> <task>` / `/dsh <repo> <task>` 写 `codex_tasks`。
 - runner 串行领取：
@@ -98,6 +104,7 @@ getupdates
 
 | 能力 | 状态 |
 |---|---|
+| 首次欢迎语（一次） | ✅ |
 | 私聊问答 + 上下文 | ✅ |
 | DeepSeek 回答、typing、分段、兜底 | ✅ |
 | 图片视觉（DeepSeek Flash） | ✅ |

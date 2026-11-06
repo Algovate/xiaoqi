@@ -20,7 +20,7 @@
 ## 一句话方案
 
 - **入口**：微信私聊，直接发问题，不需要 @
-- **能力**：上下文问答、DeepSeek、图片视觉/OCR、PDF/DOCX、摘要、提醒、知识库
+- **能力**：首次欢迎语、上下文问答、DeepSeek、图片视觉/OCR、PDF/DOCX、摘要、提醒、知识库
 - **任务**：`/codex`、`/dsh` 调度外部编码 runner
 - **运营**：Admin 仪表盘、每日 token 预算、Prometheus 指标
 - **架构**：TypeScript monorepo；gateway/worker/runner/api + PostgreSQL/Redis

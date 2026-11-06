@@ -51,6 +51,7 @@ export const users = pgTable(
     status: text("status").notNull().default("active"),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    welcomedAt: timestamp("welcomed_at", { withTimezone: true }),
     settings: jsonb("settings").notNull().default({}),
   },
   (t) => [uniqueIndex("users_account_wx_uq").on(t.accountId, t.wxUserId)],
