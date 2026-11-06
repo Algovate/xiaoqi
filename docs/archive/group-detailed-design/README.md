@@ -1,10 +1,10 @@
 # 小栖 Xiaoqi · 详细设计
 
 > 目标：从“产品架构”推进到“可直接开工”的实现级设计。  
-> 前置：[产品与架构设计](../design.md)、[品牌命名](../brand.md)、[Phase 0 探针](../protocol-probe.md)
+> 前置：[产品与架构设计](../group-design.md)、[品牌命名](../../brand.md)、[Phase 0 探针](../protocol-probe.md)
 
 > **2026-11-06 Phase 0 结果：群聊 No-Go。** 本目录的群聊实现级设计保留作 future 参考；  
-> **当前 v1 私聊设计见 [`../design-dm.md`](../design-dm.md)。** 文中 group-specific 部分不进入 v1。
+> **当前 v1 私聊设计见 [`../design-dm.md`](../../design-dm.md)。** 文中 group-specific 部分不进入 v1。
 
 ## 文档
 

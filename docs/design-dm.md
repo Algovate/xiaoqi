@@ -4,7 +4,7 @@
 > 日期：2026-11-06  
 > 状态：Phase 0 后定稿；替代原“群助手”v1 范围  
 > 依据：[Phase 0 结果](./phase0-results.md)  
-> 说明：原群助手设计保留在 [`design.md`](./design.md) 作为历史/future 参考；**当前开发以本文为准**。
+> 说明：原群助手设计保留在 [`design.md`](./archive/group-design.md) 作为历史/future 参考；**当前开发以本文为准**。
 
 ---
 

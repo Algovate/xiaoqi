@@ -1,12 +1,12 @@
 # 小栖 Xiaoqi · 详细设计 00 · 总览与运行时
 
-> **归档提示（2026-11-06）**：Phase 0 群聊 No-Go；本文件为群版 future 参考。当前 v1 私聊设计见 [`../design-dm.md`](../design-dm.md)。
+> **归档提示（2026-11-06）**：Phase 0 群聊 No-Go；本文件为群版 future 参考。当前 v1 私聊设计见 [`../design-dm.md`](../../design-dm.md)。
 
 
 > 版本：v0.1  
 > 日期：2026-11-06  
 > 状态：设计评审稿  
-> 前置阅读：[产品与架构设计](../design.md)、[品牌命名](../brand.md)  
+> 前置阅读：[产品与架构设计](../group-design.md)、[品牌命名](../../brand.md)  
 > 说明：本系列文档锁定**实现级接口、数据、流程与测试**；产品取舍以 `docs/design.md` 为准。
 
 ---
@@ -47,7 +47,7 @@
 
 ## 2. 运行时拓扑
 
-![组件图](../diagrams/components.png)
+![组件图](../../diagrams/components.png)
 
 ### 2.1 进程
 
@@ -242,7 +242,7 @@ sequenceDiagram
 
 ### 4.2 扫码登录
 
-![登录状态机](../diagrams/login-state.png)
+![登录状态机](../../diagrams/login-state.png)
 
 1. 管理员在后台点“绑定/重新登录”；首次先 `POST /api/v1/accounts` 创建待绑定账号（`ilink_bot_id=pending:<uuid>`）。
 2. `api` 调 gateway `POST /internal/v1/accounts/:id/login/start`。

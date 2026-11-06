@@ -1,6 +1,6 @@
 # 小栖 Xiaoqi · 详细设计 05 · 部署、运维与测试
 
-> **归档提示（2026-11-06）**：Phase 0 群聊 No-Go；本文件为群版 future 参考。当前 v1 私聊设计见 [`../design-dm.md`](../design-dm.md)。
+> **归档提示（2026-11-06）**：Phase 0 群聊 No-Go；本文件为群版 future 参考。当前 v1 私聊设计见 [`../design-dm.md`](../../design-dm.md)。
 
 
 > 对应代码：`docker-compose.yml`、`deploy/`、`test/`  

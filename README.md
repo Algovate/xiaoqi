@@ -9,18 +9,19 @@
 
 | 文档 | 内容 |
 |---|---|
+| [文档索引](docs/README.md) | 当前设计 / 里程碑 / 归档 / 工具 |
 | [品牌命名](docs/brand.md) | 小栖 Xiaoqi：中英文名、Bot 名、Git repo、命名体系 |
 | [DM v1 设计](docs/design-dm.md) | **当前开发依据**：私聊助理范围、架构、数据、里程碑 |
-| [M1 骨架](docs/m1.md) | 登录/轮询/落库/outbox/echo 的启动与验证 |
-| [M2 LLM](docs/m2.md) | 上下文、DeepSeek、typing、分段、失败兜底 |
-| [M3 文件与命令](docs/m3.md) | PDF/DOCX 抽取、DeepSeek 视觉 + macOS OCR、`/summary`、`/reset` |
-| [M3b 提醒与知识库](docs/m3b.md) | `/remind` 定时提醒、本地知识库 ingest/检索 |
-| [M4a 后台与预算](docs/m4.md) | 静态 Admin、运行/用户/提醒/知识库、每日 token 预算 |
-| [M4b 指标与告警](docs/m4b.md) | Prometheus `/metrics`、预算 50/80/100% Webhook 告警 |
-| [M5 Codex Runner](docs/m5.md) | `/codex` 任务、仓库 allowlist、Runner、Admin 任务页 |
-| [群助手设计（归档）](docs/design.md) | 原群聊方案，保留作历史/future 参考 |
-| [群版详细设计（归档）](docs/detailed-design/README.md) | 群聊实现级设计，future 参考 |
-| [协议探针](docs/protocol-probe.md) | Phase 0：群聊能力 Go/No-Go 验证清单 |
+| [M1 骨架](docs/milestones/m1.md) | 登录/轮询/落库/outbox/echo 的启动与验证 |
+| [M2 LLM](docs/milestones/m2.md) | 上下文、DeepSeek、typing、分段、失败兜底 |
+| [M3 文件与命令](docs/milestones/m3.md) | PDF/DOCX 抽取、DeepSeek 视觉 + macOS OCR、`/summary`、`/reset` |
+| [M3b 提醒与知识库](docs/milestones/m3b.md) | `/remind` 定时提醒、本地知识库 ingest/检索 |
+| [M4a 后台与预算](docs/milestones/m4.md) | 静态 Admin、运行/用户/提醒/知识库、每日 token 预算 |
+| [M4b 指标与告警](docs/milestones/m4b.md) | Prometheus `/metrics`、预算 50/80/100% Webhook 告警 |
+| [M5 Codex Runner](docs/milestones/m5.md) | `/codex` 任务、仓库 allowlist、Runner、Admin 任务页 |
+| [群助手设计（归档）](docs/archive/group-design.md) | 原群聊方案，保留作历史/future 参考 |
+| [群版详细设计（归档）](docs/archive/group-detailed-design/README.md) | 群聊实现级设计，future 参考 |
+| [协议探针](docs/archive/protocol-probe.md) | Phase 0：群聊能力 Go/No-Go 验证清单 |
 | [Phase 0 结果](docs/phase0-results.md) | 实测结论：iLink 扫码 bot 无法加入普通微信群 |
 | [POC 脚本](poc/README.md) | 零依赖 Node 探针：扫码、私聊、媒体解密 |
 | [ADR-0001](docs/adr/0001-direct-ilink-client.md) | 自建 iLink 客户端 |

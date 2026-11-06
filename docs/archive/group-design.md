@@ -6,7 +6,7 @@
 > 范围：产品、交互、协议接入、系统架构、数据、安全、交付计划
 
 > **2026-11-06 Phase 0 结果：群聊 No-Go。** 扫码 iLink bot 无法加入普通微信群。  
-> 本文保留为原群聊方案的历史/future 参考；**当前 v1 私聊设计以 [`design-dm.md`](./design-dm.md) 为准。**
+> 本文保留为原群聊方案的历史/future 参考；**当前 v1 私聊设计以 [`design-dm.md`](../design-dm.md) 为准。**
 
 **阅读指引**：决策者看 §0 / §14；产品与运营看 §1–§3 / §13；工程看 §4–§12。  
 **先读结论**：群聊接入存在未验证项，Phase 0 不通过就不进入 MVP（§0.3 / §4.4）。
@@ -45,7 +45,7 @@
 2. 执行 `docs/protocol-probe.md` 的 Phase 0 清单。
 3. Phase 0 通过后，按 §13 的 M1–M5 推进。
 
-> 实现级细化见 [详细设计](./detailed-design/README.md)：进程/内部 API、iLink 适配、消息流水线、Agent/RAG、DDL/REST、部署与测试。
+> 实现级细化见 [详细设计](./group-detailed-design/README.md)：进程/内部 API、iLink 适配、消息流水线、Agent/RAG、DDL/REST、部署与测试。
 
 ---
 
@@ -397,7 +397,7 @@ iLink 目前只提供“消息管道”，不提供通讯录/群资料 API。以
 
 ### 5.1 架构图
 
-![系统架构](./diagrams/architecture.png)
+![系统架构](../diagrams/architecture.png)
 
 ### 5.2 组件职责
 
@@ -466,7 +466,7 @@ xiaoqi/
 
 ### 5.5 关键流程
 
-![消息流水线](./diagrams/pipeline.png)
+![消息流水线](../diagrams/pipeline.png)
 
 1. gateway 长轮询收到消息；
 2. 在**一个事务**里写 `messages`、更新 `account_cursors`、写 `outbox`；
@@ -485,7 +485,7 @@ xiaoqi/
 
 ### 6.1 状态机
 
-![消息状态机](./diagrams/message-state.png)
+![消息状态机](../diagrams/message-state.png)
 
 状态落库在 `runs.status`：`received → normalized → queued → running → sending → sent | failed | dead`。前端日志页按此展示。
 

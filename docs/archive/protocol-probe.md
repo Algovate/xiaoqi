@@ -4,9 +4,9 @@
 > 时间盒：1–2 个工作日。  
 > 结论只有两种：**Go**（进入 M1）或 **No-Go**（换通道/改范围）。
 >
-> **实测结论（2026-11-06）：群聊 No-Go。** 扫码 bot 无法加入普通微信群，详见 [Phase 0 结果](./phase0-results.md)。
+> **实测结论（2026-11-06）：群聊 No-Go。** 扫码 bot 无法加入普通微信群，详见 [Phase 0 结果](../phase0-results.md)。
 >
-> 已提供零依赖 POC：[`poc/README.md`](../poc/README.md)。跑 `node poc/probe.mjs login` 即可开始。
+> 已提供零依赖 POC：[`poc/README.md`](../../poc/README.md)。跑 `node poc/probe.mjs login` 即可开始。
 
 ---
 
