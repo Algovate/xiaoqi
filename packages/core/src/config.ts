@@ -33,6 +33,8 @@ const EnvSchema = z.object({
   CODEX_REPOS: z.string().default(""),
   CODEX_ALLOWED_USERS: z.string().default(""),
   CODEX_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
+  DSH_BIN: z.string().min(1).default("dsh"),
+  DSH_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
   MEDIA_DIR: z.string().min(1).default("./data/media"),
   OCR_ENABLED: z.enum(["auto", "true", "false"]).default("auto"),
   OCR_BIN: z.string().default(""),

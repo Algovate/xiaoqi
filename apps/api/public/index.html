@@ -115,6 +115,7 @@ async function refresh() {
     $("codex").innerHTML = table(codex, [
       { label:"时间", render:r=>dt(r.created_at) },
       { label:"用户", render:r=>esc(r.wx_user_id || "-") },
+      { label:"引擎", key:"engine" },
       { label:"仓库", key:"repo_alias" },
       { label:"类型", key:"kind" },
       { label:"任务", render:r=>esc((r.prompt || "").slice(0, 80)) },

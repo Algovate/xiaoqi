@@ -14,6 +14,7 @@ interface Task {
   repo_alias: string;
   repo_path: string;
   prompt: string;
+  engine: string;
   kind: string;
   resume_session_id: string | null;
   status: string;
@@ -64,9 +65,11 @@ async function execute(task: Task): Promise<void> {
     return;
   }
 
-  const outFile = path.join(os.tmpdir(), `xiaoqi-codex-${task.id}.txt`);
-  const args =
-    task.kind === "resume" && task.resume_session_id
+  const isDsh = task.engine === "dsh";
+  const outFile = path.join(os.tmpdir(), `xiaoqi-${task.engine}-${task.id}.txt`);
+  const args = isDsh
+    ? ["headless", task.prompt]
+    : task.kind === "resume" && task.resume_session_id
       ? ["exec", "resume", task.resume_session_id, "--json", "-o", outFile, task.prompt]
       : [
           "exec",
@@ -80,8 +83,9 @@ async function execute(task: Task): Promise<void> {
           task.prompt,
         ];
 
-  logger.info({ taskId: task.id, repo: task.repo_alias }, "codex task started");
-  const child = spawn(config.CODEX_BIN, args, {
+  const bin = isDsh ? config.DSH_BIN : config.CODEX_BIN;
+  logger.info({ taskId: task.id, repo: task.repo_alias, engine: task.engine }, "task started");
+  const child = spawn(bin, args, {
     cwd: task.repo_path,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -97,10 +101,11 @@ async function execute(task: Task): Promise<void> {
   let sessionId: string | null = null;
   let lastEvent = "";
 
+  const timeoutMs = isDsh ? config.DSH_TIMEOUT_MS : config.CODEX_TIMEOUT_MS;
   const timer = setTimeout(() => {
     timedOut = true;
     killTree(child);
-  }, config.CODEX_TIMEOUT_MS);
+  }, timeoutMs);
   timer.unref();
 
   const cancelPoll = setInterval(() => {
@@ -117,6 +122,12 @@ async function execute(task: Task): Promise<void> {
   cancelPoll.unref();
 
   child.stdout?.on("data", (chunk: Buffer) => {
+    if (isDsh) {
+      stdoutBuf = (stdoutBuf + chunk.toString("utf8")).slice(-20_000);
+      lastEvent = stdoutBuf.slice(-500);
+      void pool.query("update codex_tasks set last_event=$2 where id=$1", [task.id, lastEvent]);
+      return;
+    }
     stdoutBuf += chunk.toString("utf8");
     let idx;
     while ((idx = stdoutBuf.indexOf("\n")) >= 0) {
@@ -167,19 +178,23 @@ async function execute(task: Task): Promise<void> {
 
     void (async () => {
       let summary = "";
-      try {
-        summary = await fsp.readFile(outFile, "utf8");
-      } catch {
-        summary = "";
+      if (isDsh) {
+        summary = stdoutBuf.trim();
+      } else {
+        try {
+          summary = await fsp.readFile(outFile, "utf8");
+        } catch {
+          summary = "";
+        }
       }
       await fsp.rm(outFile, { force: true }).catch(() => undefined);
 
       const diffStat = await gitDiff(task.repo_path);
       const status = cancelled ? "cancelled" : timedOut || code !== 0 ? "failed" : "completed";
       const error = timedOut
-        ? `超时（${config.CODEX_TIMEOUT_MS}ms）`
+        ? `超时（${timeoutMs}ms）`
         : code !== 0
-          ? stderr.trim().slice(-2000) || `codex exit ${code}`
+          ? stderr.trim().slice(-2000) || `${task.engine} exit ${code}`
           : null;
 
       await pool.query(
@@ -200,7 +215,8 @@ async function notify(
   diffStat: string,
 ): Promise<void> {
   const short = task.id.slice(0, 8);
-  const head = status === "completed" ? `✅ Codex 任务 ${short} 完成` : `❌ Codex 任务 ${short} ${status}`;
+  const label = task.engine === "dsh" ? "DSH" : "Codex";
+  const head = status === "completed" ? `✅ ${label} 任务 ${short} 完成` : `❌ ${label} 任务 ${short} ${status}`;
   const body = summary.trim() || error || "（无输出）";
   const diff = diffStat.trim() ? `\n\n变更：\n${diffStat.trim().slice(0, 800)}` : "";
   const text = `${head}\n仓库：${task.repo_alias}\n\n${body.slice(0, 1200)}${diff}`;

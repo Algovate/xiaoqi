@@ -2,7 +2,7 @@
 
 **小栖（Xiaoqi）** 是微信里的私人 AI 助理，基于腾讯 **iLink Bot API**（微信 ClawBot）接入个人微信。
 
-> 当前阶段：**M5b 已实现**（Codex resume + diff）。下一步：DSH runner / RBAC。  
+> 当前阶段：**M5c 已实现**（Codex + DSH runner）。下一步：RBAC / diff review。  
 > 仓库名：`xiaoqi` · 品牌：**小栖 Xiaoqi** · Bot：**小栖**
 
 ## 文档
@@ -46,6 +46,6 @@
 ## 下一步
 
 1. 普通终端运行 `pnpm dev:runner`；
-2. 微信发 `/codex xiaoqi 修复失败测试`；
+2. 微信发 `/codex xiaoqi 修复失败测试` 或 `/dsh xiaoqi 分析仓库`；
 3. `/codex resume <id> 继续`；
 4. Admin 查看任务、状态、diff。

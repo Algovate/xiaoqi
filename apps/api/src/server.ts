@@ -116,7 +116,7 @@ export async function buildApi(deps: ApiDeps) {
   app.get("/api/v1/codex-tasks", async (req) => {
     const limit = Math.min(Number((req.query as { limit?: string }).limit ?? 50), 200);
     const rows = await pool.query(`
-      select t.id, t.kind, t.status, t.repo_alias, t.prompt, t.last_event, t.summary, t.diff_stat,
+      select t.id, t.engine, t.kind, t.status, t.repo_alias, t.prompt, t.last_event, t.summary, t.diff_stat,
              t.error, t.exit_code, t.created_at, t.started_at, t.finished_at,
              u.wx_user_id
       from codex_tasks t left join users u on u.id = t.user_id

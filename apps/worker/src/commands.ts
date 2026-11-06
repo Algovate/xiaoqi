@@ -18,6 +18,7 @@ export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
 /summary  总结最近对话
 /remind 明天10点 交周报  设置提醒
 /codex xiaoqi 修复测试  启动 Codex 任务
+/dsh xiaoqi 分析仓库    启动 DSH 任务
 /reset    清除上下文
 /whoami   查看你的 ID
 /help     显示这条帮助`;
@@ -54,7 +55,9 @@ export async function handleCommand(
     case "summary":
       return summarize(deps, msg, user);
     case "codex":
-      return codexCommand(deps, msg, command);
+      return taskCommand(deps, msg, command, "codex");
+    case "dsh":
+      return taskCommand(deps, msg, command, "dsh");
     case "remind": {
       const parsed = parseReminder(command.args);
       if (!parsed) {
@@ -74,28 +77,30 @@ export async function handleCommand(
   }
 }
 
-async function codexCommand(
+async function taskCommand(
   deps: { db: Database; config: AppConfig },
   msg: MessageRow,
   command: Command,
+  engine: "codex" | "dsh",
 ): Promise<string> {
+  const prefix = `/${engine}`;
   const allowed = parseUserAllowlist(deps.config.CODEX_ALLOWED_USERS);
   if (!allowed.has(msg.senderId)) {
-    return "Codex 通道未对你的微信 ID 开放。";
+    return `${engine.toUpperCase()} 通道未对你的微信 ID 开放。`;
   }
   const repos = parseRepoAllowlist(deps.config.CODEX_REPOS);
-  if (repos.size === 0) return "Codex 通道未配置仓库。";
+  if (repos.size === 0) return `${engine.toUpperCase()} 通道未配置仓库。`;
 
   const args = command.args.trim();
   const [head, ...rest] = args.split(/\s+/).filter(Boolean);
 
   if (!head || head === "help") {
+    const resume = engine === "codex" ? `${prefix} resume <id> <追加指令>\n` : "";
     return `用法：
-/codex <repo> <任务>
-/codex resume <id> <追加指令>
-/codex list
-/codex status <id>
-/codex stop <id>
+${prefix} <repo> <任务>
+${resume}${prefix} list
+${prefix} status <id>
+${prefix} stop <id>
 
 可用仓库：${[...repos.keys()].join(", ")}`;
   }
@@ -104,27 +109,28 @@ async function codexCommand(
     const rows = await deps.db
       .select()
       .from(codexTasks)
-      .where(eq(codexTasks.userId, msg.userId ?? ""))
+      .where(and(eq(codexTasks.userId, msg.userId ?? ""), eq(codexTasks.engine, engine)))
       .orderBy(desc(codexTasks.createdAt))
       .limit(5);
-    if (rows.length === 0) return "还没有 Codex 任务。";
+    if (rows.length === 0) return `还没有 ${engine === "codex" ? "Codex" : "DSH"} 任务。`;
     return rows
       .map((t) => `${t.id.slice(0, 8)}  ${t.status}  ${t.repoAlias}\n${t.prompt.slice(0, 80)}`)
       .join("\n\n");
   }
 
   if (head === "resume") {
-    const prefix = rest[0]?.trim();
+    if (engine !== "codex") return `/${engine} 不支持 resume。`;
+    const idPrefix = rest[0]?.trim();
     const instruction = rest.slice(1).join(" ").trim();
-    if (!prefix || !instruction) return "用法：/codex resume <任务ID前8位> <追加指令>";
+    if (!idPrefix || !instruction) return `用法：${prefix} resume <任务ID前8位> <追加指令>`;
     const rows = await deps.db
       .select()
       .from(codexTasks)
-      .where(eq(codexTasks.userId, msg.userId ?? ""))
+      .where(and(eq(codexTasks.userId, msg.userId ?? ""), eq(codexTasks.engine, engine)))
       .orderBy(desc(codexTasks.createdAt))
       .limit(50);
-    const parent = rows.find((t) => t.id.startsWith(prefix));
-    if (!parent) return "没找到这个 Codex 任务。";
+    const parent = rows.find((t) => t.id.startsWith(idPrefix));
+    if (!parent) return `没找到这个 ${engine === "codex" ? "Codex" : "DSH"} 任务。`;
     if (!parent.sessionId) return "这个任务没有可 resume 的 Codex session。";
     const inserted = await deps.db
       .insert(codexTasks)
@@ -135,25 +141,26 @@ async function codexCommand(
         repoAlias: parent.repoAlias,
         repoPath: parent.repoPath,
         prompt: instruction,
+        engine,
         kind: "resume",
         resumeSessionId: parent.sessionId,
         status: "queued",
       })
       .returning({ id: codexTasks.id });
-    return `已提交 Codex resume：${inserted[0]!.id.slice(0, 8)}\n仓库：${parent.repoAlias}\n追加：${instruction.slice(0, 200)}`;
+    return `已提交 ${engine === "codex" ? "Codex" : "DSH"} resume：${inserted[0]!.id.slice(0, 8)}\n仓库：${parent.repoAlias}\n追加：${instruction.slice(0, 200)}`;
   }
 
   if (head === "status" || head === "stop") {
-    const prefix = rest.join(" ").trim();
-    if (!prefix) return `用法：/codex ${head} <任务ID前 8 位>`;
+    const idPrefix = rest.join(" ").trim();
+    if (!idPrefix) return `用法：${prefix} ${head} <任务ID前 8 位>`;
     const rows = await deps.db
       .select()
       .from(codexTasks)
-      .where(eq(codexTasks.userId, msg.userId ?? ""))
+      .where(and(eq(codexTasks.userId, msg.userId ?? ""), eq(codexTasks.engine, engine)))
       .orderBy(desc(codexTasks.createdAt))
       .limit(50);
-    const task = rows.find((t) => t.id.startsWith(prefix));
-    if (!task) return "没找到这个 Codex 任务。";
+    const task = rows.find((t) => t.id.startsWith(idPrefix));
+    if (!task) return `没找到这个 ${engine === "codex" ? "Codex" : "DSH"} 任务。`;
     if (head === "stop") {
       if (!["queued", "running"].includes(task.status)) return `任务已经是 ${task.status}，不用停。`;
       await deps.db
@@ -188,11 +195,12 @@ async function codexCommand(
       repoAlias,
       repoPath,
       prompt,
+      engine,
       status: "queued",
     })
     .returning({ id: codexTasks.id });
   const id = rows[0]!.id;
-  return `已提交 Codex 任务：${id.slice(0, 8)}\n仓库：${repoAlias}\n任务：${prompt.slice(0, 200)}\n完成后我会通知你。`;
+  return `已提交 ${engine === "codex" ? "Codex" : "DSH"} 任务：${id.slice(0, 8)}\n仓库：${repoAlias}\n任务：${prompt.slice(0, 200)}\n完成后我会通知你。`;
 }
 
 async function summarize(

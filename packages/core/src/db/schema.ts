@@ -243,6 +243,7 @@ export const codexTasks = pgTable(
     repoAlias: text("repo_alias").notNull(),
     repoPath: text("repo_path").notNull(),
     prompt: text("prompt").notNull(),
+    engine: text("engine").notNull().default("codex"),
     kind: text("kind").notNull().default("exec"),
     status: text("status").notNull().default("queued"),
     resumeSessionId: text("resume_session_id"),
