@@ -61,7 +61,7 @@ export class OutboxDispatcher {
             "dm.message",
             { accountId, messageId },
             {
-              jobId: `inbound-${messageId}`,
+              jobId: `inbound-${accountId}-${messageId}`,
               attempts: 3,
               backoff: { type: "exponential", delay: 2000 },
               removeOnComplete: 1000,
