@@ -23,6 +23,8 @@ const EnvSchema = z.object({
   GATEWAY_INTERNAL_URL: z.string().min(1).default("http://127.0.0.1:4101"),
   WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(4102),
   MEDIA_DIR: z.string().min(1).default("./data/media"),
+  OCR_ENABLED: z.enum(["auto", "true", "false"]).default("auto"),
+  OCR_BIN: z.string().default(""),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

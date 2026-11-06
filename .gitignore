@@ -11,3 +11,4 @@ coverage/
 data/
 .poc/
 .pnpm-store/
+tools/ocr-bin

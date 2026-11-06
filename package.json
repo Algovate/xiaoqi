@@ -12,7 +12,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "fake:ilink": "node poc/fake-ilink.mjs",
-    "ilink:login": "pnpm --filter @xiaoqi/gateway auth"
+    "ilink:login": "pnpm --filter @xiaoqi/gateway auth",
+    "ocr:build": "bash scripts/build-ocr.sh"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

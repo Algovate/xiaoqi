@@ -4,6 +4,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import type { AppConfig, Database, MessageRow } from "@xiaoqi/core";
 import { mediaAssets } from "@xiaoqi/core";
+import { ocrFile } from "./ocr.js";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT = 20_000;
@@ -99,7 +100,10 @@ async function ingestOne(
       const result = await extractText(new Uint8Array(plain), { mergePages: true });
       if (result.totalPages > 200) throw new Error("PDF 超过 200 页");
       text = String(result.text).trim();
-      if (!text) text = "[PDF 未提取到文本，可能是扫描件]";
+      if (!text) {
+        const ocr = await ocrFile(config, fullPath);
+        text = ocr ? `[PDF OCR]\n${ocr}` : "[PDF 未提取到文本，可能是扫描件]";
+      }
     } else if (ext === "docx" || fileName.toLowerCase().endsWith(".docx")) {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer: plain });
@@ -108,7 +112,8 @@ async function ingestOne(
     } else if (ext === "txt" || ext === "md" || mime.startsWith("text/")) {
       text = plain.toString("utf8").trim();
     } else if (kind === "image") {
-      text = "[图片已收到，当前版本暂不支持图片识别]";
+      const ocr = await ocrFile(config, fullPath);
+      text = ocr ? `[图片 OCR]\n${ocr}` : "[图片已收到，但未识别出文字]";
     } else {
       text = `[文件 ${fileName} 暂不支持解析]`;
     }
