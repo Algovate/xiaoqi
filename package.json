@@ -14,7 +14,8 @@
     "fake:ilink": "node poc/fake-ilink.mjs",
     "ilink:login": "pnpm --filter @xiaoqi/gateway auth",
     "ocr:build": "bash scripts/build-ocr.sh",
-    "kb:ingest": "pnpm --filter @xiaoqi/worker kb:ingest"
+    "kb:ingest": "pnpm --filter @xiaoqi/worker kb:ingest",
+    "dev:api": "pnpm --filter @xiaoqi/api dev"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

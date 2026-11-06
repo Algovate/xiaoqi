@@ -10,6 +10,7 @@ import { chunkReply, sanitizeReply } from "./format.js";
 import { chat } from "./llm.js";
 import { extractAttachments } from "./media.js";
 import { searchKnowledge } from "./kb.js";
+import { dailyTokensUsed } from "./budget.js";
 
 interface DmJob {
   accountId: string;
@@ -129,6 +130,30 @@ export function createDmHandler(deps: DmHandlerDeps) {
       .where(eq(runs.id, run.id));
 
     const command = parseCommand(msg.text);
+
+    if (msg.userId && !(command && ["help", "whoami", "reset", "remind"].includes(command.name))) {
+      try {
+        const used = await dailyTokensUsed(pool, msg.userId);
+        if (used >= config.MAX_DAILY_TOKENS) {
+          const text = `今天的 AI 额度已用完（上限 ${config.MAX_DAILY_TOKENS.toLocaleString()} tokens），明天再试。`;
+          await sendChunks(run.id, msg, text);
+          await db
+            .update(runs)
+            .set({
+              status: "failed",
+              errorCode: "DAILY_BUDGET_EXCEEDED",
+              model: "budget",
+              latencyMs: Date.now() - startedAt,
+              finishedAt: new Date(),
+            })
+            .where(eq(runs.id, run.id));
+          logger.warn({ runId: run.id, used }, "daily budget exceeded");
+          return;
+        }
+      } catch (err) {
+        logger.warn({ err, runId: run.id }, "budget check failed; continue");
+      }
+    }
 
     if (command) {
       let reply: string;

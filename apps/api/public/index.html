@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>小栖 Admin</title>
+<style>
+  :root { --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb; --bg:#f7f6f2; --card:#fff; --green:#1f3d33; --accent:#07c160; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--green); color:#fff; padding:16px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; font-weight:600; letter-spacing:.5px; }
+  header .grow { flex:1; }
+  header input { width:280px; padding:8px 10px; border-radius:8px; border:0; }
+  header button, .actions button { background:var(--accent); color:#063; border:0; padding:8px 14px; border-radius:8px; font-weight:600; cursor:pointer; }
+  main { max-width:1180px; margin:24px auto; padding:0 20px 60px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .card .label { color:var(--muted); font-size:12px; }
+  .card .value { font-size:26px; font-weight:700; margin-top:4px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:16px 0; overflow:auto; }
+  section h2 { font-size:15px; margin:0 0 10px; }
+  table { width:100%; border-collapse:collapse; white-space:nowrap; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px; }
+  th { color:var(--muted); font-weight:500; }
+  .muted { color:var(--muted); }
+  .err { color:#b91c1c; margin:12px 0; }
+  .status { padding:2px 8px; border-radius:999px; background:#eef2f1; font-size:12px; }
+  .status.sent { background:#e7f7ee; color:#067647; }
+  .status.failed { background:#fdecec; color:#b42318; }
+  .actions { display:flex; gap:8px; align-items:center; }
+  code { background:#f3f4f6; padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>小栖 Admin</h1>
+  <div class="grow"></div>
+  <input id="token" type="password" placeholder="ADMIN_TOKEN" autocomplete="off" />
+  <button id="connect">连接</button>
+</header>
+<main>
+  <div id="err" class="err"></div>
+  <div class="cards" id="cards"></div>
+  <section><div class="actions"><h2>用户</h2><button id="refresh">刷新</button></div><div id="users"></div></section>
+  <section><h2>最近运行</h2><div id="runs"></div></section>
+  <section><h2>今日用量（近 7 天）</h2><div id="usage"></div></section>
+  <section><h2>提醒</h2><div id="reminders"></div></section>
+  <section><h2>知识库</h2><div id="knowledge"></div></section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const tokenInput = $("token");
+const err = $("err");
+tokenInput.value = localStorage.getItem("xiaoqi_admin_token") || "";
+
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+function dt(v) { return v ? new Date(v).toLocaleString("zh-CN", { hour12:false }) : ""; }
+function stat(v) { return Number(v || 0).toLocaleString(); }
+
+async function api(path) {
+  const token = tokenInput.value.trim();
+  if (!token) throw new Error("请先填 ADMIN_TOKEN");
+  const res = await fetch(path, { headers: { "x-admin-token": token } });
+  if (!res.ok) throw new Error(`${path} HTTP ${res.status}`);
+  return res.json();
+}
+
+function table(rows, columns) {
+  if (!rows.length) return '<p class="muted">暂无数据</p>';
+  return `<table><thead><tr>${columns.map(c=>`<th>${esc(c.label)}</th>`).join("")}</tr></thead><tbody>` +
+    rows.map(r=>`<tr>${columns.map(c=>`<td>${c.render ? c.render(r) : esc(r[c.key])}</td>`).join("")}</tr>`).join("") +
+    `</tbody></table>`;
+}
+
+async function refresh() {
+  err.textContent = "";
+  try {
+    const [overview, users, runs, usage, reminders, knowledge] = await Promise.all([
+      api("/api/v1/overview"), api("/api/v1/users"), api("/api/v1/runs"),
+      api("/api/v1/usage"), api("/api/v1/reminders"), api("/api/v1/knowledge"),
+    ]);
+    $("cards").innerHTML = [
+      ["用户", overview.users], ["今日消息", overview.messages_today], ["今日运行", overview.runs_today],
+      ["今日 tokens", overview.tokens_today], ["待发提醒", overview.scheduled_reminders], ["知识库文档", overview.kb_docs],
+    ].map(([label,value])=>`<div class="card"><div class="label">${label}</div><div class="value">${stat(value)}</div></div>`).join("");
+
+    $("users").innerHTML = table(users, [
+      { label:"wx_user_id", key:"wx_user_id" },
+      { label:"备注名", render:r=>esc(r.display_name || "-") },
+      { label:"状态", render:r=>`<span class="status">${esc(r.status)}</span>` },
+      { label:"消息", render:r=>stat(r.messages) },
+      { label:"运行", render:r=>stat(r.runs) },
+      { label:"今日 tokens", render:r=>stat(r.today_tokens) },
+      { label:"最后活跃", render:r=>dt(r.last_seen_at) },
+    ]);
+    $("runs").innerHTML = table(runs, [
+      { label:"时间", render:r=>dt(r.created_at) },
+      { label:"用户", render:r=>esc(r.wx_user_id || "-") },
+      { label:"状态", render:r=>`<span class="status ${esc(r.status)}">${esc(r.status)}</span>` },
+      { label:"模型", key:"model" },
+      { label:"tokens", render:r=>`${stat(r.prompt_tokens)} / ${stat(r.completion_tokens)}` },
+      { label:"耗时", render:r=>r.latency_ms ? `${r.latency_ms}ms` : "" },
+      { label:"错误", render:r=>esc(r.error_code || "") },
+    ]);
+    $("usage").innerHTML = table(usage, [
+      { label:"日期", key:"day" }, { label:"运行", render:r=>stat(r.runs) },
+      { label:"prompt", render:r=>stat(r.prompt_tokens) }, { label:"completion", render:r=>stat(r.completion_tokens) },
+    ]);
+    $("reminders").innerHTML = table(reminders, [
+      { label:"时间", render:r=>dt(r.run_at) }, { label:"用户", render:r=>esc(r.wx_user_id || "-") },
+      { label:"内容", key:"text" }, { label:"状态", render:r=>`<span class="status ${esc(r.status)}">${esc(r.status)}</span>` },
+      { label:"错误", render:r=>esc(r.error_code || "") },
+    ]);
+    $("knowledge").innerHTML = table(knowledge, [
+      { label:"标题", key:"title" }, { label:"chunks", render:r=>stat(r.chunks) },
+      { label:"路径", render:r=>esc(r.source_path || "") }, { label:"导入时间", render:r=>dt(r.created_at) },
+    ]);
+  } catch (e) {
+    err.textContent = e.message;
+  }
+}
+
+$("connect").onclick = () => {
+  localStorage.setItem("xiaoqi_admin_token", tokenInput.value.trim());
+  refresh();
+};
+$("refresh").onclick = refresh;
+if (tokenInput.value) refresh();
+</script>
+</body>
+</html>

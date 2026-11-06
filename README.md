@@ -2,7 +2,7 @@
 
 **小栖（Xiaoqi）** 是微信里的私人 AI 助理，基于腾讯 **iLink Bot API**（微信 ClawBot）接入个人微信。
 
-> 当前阶段：**M3b 已实现**（提醒 + 知识库）。下一步 M4：后台、预算、语义检索。  
+> 当前阶段：**M4a 已实现**（Admin 仪表盘 + 每日预算）。下一步 M4b：RBAC、语义检索、告警。  
 > 仓库名：`xiaoqi` · 品牌：**小栖 Xiaoqi** · Bot：**小栖**
 
 ## 文档
@@ -15,6 +15,7 @@
 | [M2 LLM](docs/m2.md) | 上下文、DeepSeek、typing、分段、失败兜底 |
 | [M3 文件与命令](docs/m3.md) | PDF/DOCX 抽取、DeepSeek 视觉 + macOS OCR、`/summary`、`/reset` |
 | [M3b 提醒与知识库](docs/m3b.md) | `/remind` 定时提醒、本地知识库 ingest/检索 |
+| [M4a 后台与预算](docs/m4.md) | 静态 Admin、运行/用户/提醒/知识库、每日 token 预算 |
 | [群助手设计（归档）](docs/design.md) | 原群聊方案，保留作历史/future 参考 |
 | [群版详细设计（归档）](docs/detailed-design/README.md) | 群聊实现级设计，future 参考 |
 | [协议探针](docs/protocol-probe.md) | Phase 0：群聊能力 Go/No-Go 验证清单 |
@@ -42,6 +43,6 @@
 
 ## 下一步
 
-1. 私聊 `/remind 1分钟后 测试` 验证提醒；
-2. 放一份资料到 `knowledge/` 并 `pnpm kb:ingest`；
-3. 进入 M4：后台、预算、语义检索。
+1. `pnpm dev:api`，打开 `http://127.0.0.1:4100`；
+2. 输入 `ADMIN_TOKEN` 查看用户/运行/用量；
+3. 进入 M4b：RBAC、语义检索、告警。
