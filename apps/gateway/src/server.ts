@@ -11,6 +11,10 @@ import {
   messages,
   outboundMessages,
   runs,
+  sendDuration,
+  sendTotal,
+  metricsContentType,
+  metricsText,
 } from "@xiaoqi/core";
 import { ILinkClient } from "@xiaoqi/ilink";
 import { loadSendContext, recordOutbound, sendText } from "./outbound.js";
@@ -55,6 +59,10 @@ export async function buildServer(deps: ServerDeps) {
 
   app.get("/healthz", async () => ({ ok: true, service: "gateway" }));
 
+  app.get("/metrics", async (_req, reply) => {
+    return reply.type(metricsContentType).send(await metricsText());
+  });
+
   app.get("/internal/v1/health", async () => ({
     ok: true,
     service: "gateway",
@@ -97,6 +105,7 @@ export async function buildServer(deps: ServerDeps) {
     const outbound = outRows[0];
     if (!outbound) throw new AppError({ code: "OUTBOUND_NOT_FOUND", message: "outbound row missing" });
     if (outbound.status === "sent") {
+      sendTotal.inc({ result: "deduplicated" });
       return { ok: true, wxMessageId: outbound.wxMessageId, sentAt: outbound.sentAt, deduplicated: true };
     }
 
@@ -108,6 +117,7 @@ export async function buildServer(deps: ServerDeps) {
       source.senderId,
     );
 
+    const sendStarted = process.hrtime.bigint();
     try {
       const { wxMessageId } = await sendText(
         config,
@@ -115,6 +125,8 @@ export async function buildServer(deps: ServerDeps) {
         input.text,
         `xiaoqi-${input.runId}-${input.chunkIndex}`,
       );
+      sendDuration.observe(Number(process.hrtime.bigint() - sendStarted) / 1e9);
+      sendTotal.inc({ result: "sent" });
       await db
         .update(outboundMessages)
         .set({ status: "sent", wxMessageId, sentAt: new Date() })
@@ -130,6 +142,7 @@ export async function buildServer(deps: ServerDeps) {
       return { ok: true, wxMessageId, sentAt: new Date().toISOString(), deduplicated: false };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      sendTotal.inc({ result: "failed" });
       await db
         .update(outboundMessages)
         .set({ status: "failed", errorCode: "SEND_FAILED" })
@@ -165,8 +178,11 @@ export async function buildServer(deps: ServerDeps) {
       .values({ runId: run.id, chunkIndex: 0, status: "pending" })
       .onConflictDoNothing();
 
+    const sendStarted = process.hrtime.bigint();
     try {
       const { wxMessageId } = await sendText(config, sendContext, text, `xiaoqi-reminder-${run.id}`);
+      sendDuration.observe(Number(process.hrtime.bigint() - sendStarted) / 1e9);
+      sendTotal.inc({ result: "sent" });
       await db
         .update(outboundMessages)
         .set({ status: "sent", wxMessageId, sentAt: new Date() })
@@ -186,6 +202,7 @@ export async function buildServer(deps: ServerDeps) {
       return { ok: true, wxMessageId, runId: run.id };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      sendTotal.inc({ result: "failed" });
       await db
         .update(outboundMessages)
         .set({ status: "failed", errorCode: "SEND_FAILED" })

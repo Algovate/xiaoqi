@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { AppConfig, Logger } from "@xiaoqi/core";
+import { remindersTotal, type AppConfig, type Logger } from "@xiaoqi/core";
 
 interface SchedulerDeps {
   pool: Pool;
@@ -77,6 +77,7 @@ export class ReminderScheduler {
             throw new Error(`http=${resp.status} ${body.slice(0, 200)}`);
           }
           await pool.query("update reminders set status='sent', sent_at=now() where id=$1", [row.id]);
+          remindersTotal.inc({ status: "sent" });
           logger.info({ reminderId: row.id, runAt: row.run_at }, "reminder sent");
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
@@ -84,6 +85,7 @@ export class ReminderScheduler {
             "update reminders set status='failed', error_code=$2 where id=$1",
             [row.id, message.slice(0, 200)],
           );
+          remindersTotal.inc({ status: "failed" });
           logger.error({ err, reminderId: row.id }, "reminder failed");
         }
       }

@@ -1,7 +1,7 @@
 import http from "node:http";
 import { Redis } from "ioredis";
 import { Worker } from "bullmq";
-import { createDb, createLogger, loadConfig } from "@xiaoqi/core";
+import { createDb, createLogger, loadConfig, metricsContentType, metricsText } from "@xiaoqi/core";
 import { DM_QUEUE, createDmQueue } from "./queue.js";
 import { OutboxDispatcher } from "./outbox.js";
 import { createDmHandler } from "./dm-handler.js";
@@ -31,6 +31,13 @@ async function main() {
     if (req.url === "/healthz") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, service: "worker" }));
+      return;
+    }
+    if (req.url === "/metrics") {
+      void metricsText().then((text) => {
+        res.writeHead(200, { "content-type": metricsContentType });
+        res.end(text);
+      });
       return;
     }
     res.writeHead(404);

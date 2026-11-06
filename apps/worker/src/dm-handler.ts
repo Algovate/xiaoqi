@@ -3,11 +3,12 @@ import type { Job } from "bullmq";
 import { eq } from "drizzle-orm";
 import type { Pool } from "pg";
 import type { AppConfig, Database, Logger, MessageRow } from "@xiaoqi/core";
-import { messages, runs, users } from "@xiaoqi/core";
+import { agentDuration, budgetExceeded, llmTokens, messages, runs, runsTotal, users } from "@xiaoqi/core";
 import { generateAnswer } from "./answer.js";
 import { handleCommand, parseCommand } from "./commands.js";
 import { chunkReply } from "./format.js";
 import { dailyTokensUsed } from "./budget.js";
+import { maybeAlertBudget } from "./alerts.js";
 
 interface DmJob {
   accountId: string;
@@ -131,6 +132,11 @@ export function createDmHandler(deps: DmHandlerDeps) {
     if (msg.userId && !(command && ["help", "whoami", "reset", "remind"].includes(command.name))) {
       try {
         const used = await dailyTokensUsed(pool, msg.userId);
+        await maybeAlertBudget(config, logger, {
+          userId: msg.userId,
+          used,
+          limit: config.MAX_DAILY_TOKENS,
+        });
         if (used >= config.MAX_DAILY_TOKENS) {
           const text = `今天的 AI 额度已用完（上限 ${config.MAX_DAILY_TOKENS.toLocaleString()} tokens），明天再试。`;
           await sendChunks(run.id, msg, text);
@@ -144,6 +150,8 @@ export function createDmHandler(deps: DmHandlerDeps) {
               finishedAt: new Date(),
             })
             .where(eq(runs.id, run.id));
+          budgetExceeded.inc();
+          runsTotal.inc({ status: "budget_exceeded" });
           logger.warn({ runId: run.id, used }, "daily budget exceeded");
           return;
         }
@@ -175,6 +183,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
             finishedAt: new Date(),
           })
           .where(eq(runs.id, run.id));
+        runsTotal.inc({ status: commandError ? "failed" : "sent" });
         logger.info({ runId: run.id, command: command.name, chunks }, "command handled");
         return;
       } catch (err) {
@@ -222,8 +231,13 @@ export function createDmHandler(deps: DmHandlerDeps) {
           finishedAt: new Date(),
         })
         .where(eq(runs.id, run.id));
+      runsTotal.inc({ status: errorCode ? "failed" : "sent" });
+      agentDuration.observe({ model }, (Date.now() - startedAt) / 1000);
+      llmTokens.inc({ type: "prompt" }, promptTokens);
+      llmTokens.inc({ type: "completion" }, completionTokens);
       logger.info({ runId: run.id, chunks, errorCode, model }, "dm answer sent");
     } catch (err) {
+      runsTotal.inc({ status: "failed" });
       await db
         .update(runs)
         .set({

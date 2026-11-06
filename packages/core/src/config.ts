@@ -27,6 +27,7 @@ const EnvSchema = z.object({
   API_HOST: z.string().min(1).default("127.0.0.1"),
   ADMIN_TOKEN: z.string().default(""),
   MAX_DAILY_TOKENS: z.coerce.number().int().positive().default(100_000),
+  ALERT_WEBHOOK_URL: z.string().default(""),
   MEDIA_DIR: z.string().min(1).default("./data/media"),
   OCR_ENABLED: z.enum(["auto", "true", "false"]).default("auto"),
   OCR_BIN: z.string().default(""),

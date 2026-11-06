@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { Redis } from "ioredis";
 import { eq, inArray } from "drizzle-orm";
 import type { AppConfig, Database, Logger } from "@xiaoqi/core";
-import { accounts, accountCursors, decryptSecret } from "@xiaoqi/core";
+import { accounts, accountCursors, decryptSecret, inboundTotal, pollUp } from "@xiaoqi/core";
 import { ILinkClient, ILinkError } from "@xiaoqi/ilink";
 import { persistInboundBatch } from "./inbound.js";
 
@@ -140,6 +140,7 @@ export class PollerManager {
       }
 
       let backoff = 1000;
+      pollUp.set({ account: accountId }, 1);
       logger.info({ accountId }, "poller started");
 
       while (!signal.aborted) {
@@ -172,10 +173,13 @@ export class PollerManager {
             .update(accounts)
             .set({ lastPollAt: new Date(), lastError: null })
             .where(eq(accounts.id, accountId));
+          inboundTotal.inc({ result: "inserted" }, result.inserted);
+          inboundTotal.inc({ result: "skipped" }, result.skipped);
           if (result.inserted > 0) {
             logger.info({ accountId, inserted: result.inserted, skipped: result.skipped }, "inbound persisted");
           }
         } catch (err) {
+          inboundTotal.inc({ result: "error" });
           logger.error({ accountId, err }, "persist inbound failed; cursor not advanced");
           await sleep(2000);
           continue;
@@ -184,6 +188,7 @@ export class PollerManager {
         if (msgs.length === 0) await sleep(300);
       }
     } finally {
+      pollUp.set({ account: accountId }, 0);
       clearInterval(renew);
       await redis
         .eval(

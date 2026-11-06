@@ -1,7 +1,7 @@
 import fsp from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyBaseLogger } from "fastify";
-import type { AppConfig, DbHandle, Logger } from "@xiaoqi/core";
+import { metricsContentType, metricsText, type AppConfig, type DbHandle, type Logger } from "@xiaoqi/core";
 
 export interface ApiDeps {
   config: AppConfig;
@@ -21,6 +21,10 @@ export async function buildApi(deps: ApiDeps) {
     return reply.type("text/html; charset=utf-8").send(html);
   });
   app.get("/healthz", async () => ({ ok: true, service: "api" }));
+
+  app.get("/metrics", async (_req, reply) => {
+    return reply.type(metricsContentType).send(await metricsText());
+  });
 
   app.addHook("onRequest", async (req, reply) => {
     if (!req.url.startsWith("/api/v1/")) return;

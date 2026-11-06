@@ -5,3 +5,4 @@ export * from "./types.js";
 export * from "./db/schema.js";
 export { createDb, type Database, type DbHandle } from "./db/client.js";
 export { encryptSecret, decryptSecret } from "./crypto.js";
+export * from "./metrics.js";
