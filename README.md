@@ -2,7 +2,7 @@
 
 **小栖（Xiaoqi）** 是微信里的私人 AI 助理，基于腾讯 **iLink Bot API**（微信 ClawBot）接入个人微信。
 
-> 当前阶段：**M4b 已实现**（Prometheus 指标 + 预算告警）。下一步：RBAC、语义检索。  
+> 当前阶段：**M5 已实现**（Codex Runner + `/codex` 命令）。下一步：DSH runner / diff 预览 / RBAC。  
 > 仓库名：`xiaoqi` · 品牌：**小栖 Xiaoqi** · Bot：**小栖**
 
 ## 文档
@@ -17,6 +17,7 @@
 | [M3b 提醒与知识库](docs/m3b.md) | `/remind` 定时提醒、本地知识库 ingest/检索 |
 | [M4a 后台与预算](docs/m4.md) | 静态 Admin、运行/用户/提醒/知识库、每日 token 预算 |
 | [M4b 指标与告警](docs/m4b.md) | Prometheus `/metrics`、预算 50/80/100% Webhook 告警 |
+| [M5 Codex Runner](docs/m5.md) | `/codex` 任务、仓库 allowlist、Runner、Admin 任务页 |
 | [群助手设计（归档）](docs/design.md) | 原群聊方案，保留作历史/future 参考 |
 | [群版详细设计（归档）](docs/detailed-design/README.md) | 群聊实现级设计，future 参考 |
 | [协议探针](docs/protocol-probe.md) | Phase 0：群聊能力 Go/No-Go 验证清单 |
@@ -31,7 +32,7 @@
 ## 一句话方案
 
 - **入口**：微信私聊，直接发问题，不需要 @；
-- **能力**：上下文问答、DeepSeek 回答、PDF/DOCX、图片视觉 + OCR、摘要、提醒、知识库；
+- **能力**：上下文问答、DeepSeek 回答、PDF/DOCX、图片视觉 + OCR、摘要、提醒、知识库、Codex 任务；
 - **架构**：TypeScript 模块化单体；gateway 管长轮询/发送，worker 管 Agent，Postgres + Redis；
 - **原则**：不打扰、可删除、可停用、可追溯。
 
@@ -44,6 +45,6 @@
 
 ## 下一步
 
-1. 打开 `http://127.0.0.1:4100` 查看 Admin；
-2. 访问 `:4101/metrics` / `:4102/metrics` 查看指标；
-3. 进入下一阶段：RBAC/TOTP 或语义检索。
+1. 普通终端运行 `pnpm dev:runner`；
+2. 微信发 `/codex xiaoqi 修复失败测试`；
+3. Admin 查看 Codex 任务状态。

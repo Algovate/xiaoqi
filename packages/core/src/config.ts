@@ -28,6 +28,11 @@ const EnvSchema = z.object({
   ADMIN_TOKEN: z.string().default(""),
   MAX_DAILY_TOKENS: z.coerce.number().int().positive().default(100_000),
   ALERT_WEBHOOK_URL: z.string().default(""),
+
+  CODEX_BIN: z.string().min(1).default("codex"),
+  CODEX_REPOS: z.string().default(""),
+  CODEX_ALLOWED_USERS: z.string().default(""),
+  CODEX_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
   MEDIA_DIR: z.string().min(1).default("./data/media"),
   OCR_ENABLED: z.enum(["auto", "true", "false"]).default("auto"),
   OCR_BIN: z.string().default(""),

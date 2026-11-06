@@ -54,6 +54,12 @@ importers:
         specifier: ^4.0.0
         version: 4.6.7
 
+  apps/runner:
+    dependencies:
+      '@xiaoqi/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+
   apps/worker:
     dependencies:
       '@xiaoqi/core':

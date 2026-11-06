@@ -41,6 +41,8 @@ export async function buildApi(deps: ApiDeps) {
       tokens_today: string;
       scheduled_reminders: string;
       kb_docs: string;
+      codex_queued: string;
+      codex_running: string;
     }>(`
       select
         (select count(*) from users)::text as users,
@@ -48,7 +50,9 @@ export async function buildApi(deps: ApiDeps) {
         (select count(*) from runs where created_at >= (date_trunc('day', now() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai'))::text as runs_today,
         (select coalesce(sum(coalesce(prompt_tokens,0)+coalesce(completion_tokens,0)),0) from runs where created_at >= (date_trunc('day', now() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai'))::text as tokens_today,
         (select count(*) from reminders where status='scheduled')::text as scheduled_reminders,
-        (select count(*) from kb_documents)::text as kb_docs
+        (select count(*) from kb_documents)::text as kb_docs,
+        (select count(*) from codex_tasks where status='queued')::text as codex_queued,
+        (select count(*) from codex_tasks where status='running')::text as codex_running
     `);
     return today.rows[0];
   });
@@ -106,6 +110,27 @@ export async function buildApi(deps: ApiDeps) {
         (select count(*) from kb_chunks c where c.document_id = d.id)::int as chunks
       from kb_documents d order by d.created_at desc limit 100
     `);
+    return rows.rows;
+  });
+
+  app.get("/api/v1/codex-tasks", async (req) => {
+    const limit = Math.min(Number((req.query as { limit?: string }).limit ?? 50), 200);
+    const rows = await pool.query(`
+      select t.id, t.status, t.repo_alias, t.prompt, t.last_event, t.summary,
+             t.error, t.exit_code, t.created_at, t.started_at, t.finished_at,
+             u.wx_user_id
+      from codex_tasks t left join users u on u.id = t.user_id
+      order by t.created_at desc limit $1
+    `, [limit]);
+    return rows.rows;
+  });
+
+  app.get("/api/v1/codex-tasks/:id/events", async (req) => {
+    const id = String((req.params as { id: string }).id);
+    const rows = await pool.query(
+      "select id, event_type, payload, created_at from codex_task_events where task_id=$1 order by id desc limit 100",
+      [id],
+    );
     return rows.rows;
   });
 

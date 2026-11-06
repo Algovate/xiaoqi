@@ -45,6 +45,7 @@
   <section><div class="actions"><h2>用户</h2><button id="refresh">刷新</button></div><div id="users"></div></section>
   <section><h2>最近运行</h2><div id="runs"></div></section>
   <section><h2>今日用量（近 7 天）</h2><div id="usage"></div></section>
+  <section><h2>Codex 任务</h2><div id="codex"></div></section>
   <section><h2>提醒</h2><div id="reminders"></div></section>
   <section><h2>知识库</h2><div id="knowledge"></div></section>
 </main>
@@ -78,13 +79,15 @@ function table(rows, columns) {
 async function refresh() {
   err.textContent = "";
   try {
-    const [overview, users, runs, usage, reminders, knowledge] = await Promise.all([
+    const [overview, users, runs, usage, reminders, knowledge, codex] = await Promise.all([
       api("/api/v1/overview"), api("/api/v1/users"), api("/api/v1/runs"),
       api("/api/v1/usage"), api("/api/v1/reminders"), api("/api/v1/knowledge"),
+      api("/api/v1/codex-tasks"),
     ]);
     $("cards").innerHTML = [
       ["用户", overview.users], ["今日消息", overview.messages_today], ["今日运行", overview.runs_today],
       ["今日 tokens", overview.tokens_today], ["待发提醒", overview.scheduled_reminders], ["知识库文档", overview.kb_docs],
+      ["Codex 排队", overview.codex_queued], ["Codex 运行中", overview.codex_running],
     ].map(([label,value])=>`<div class="card"><div class="label">${label}</div><div class="value">${stat(value)}</div></div>`).join("");
 
     $("users").innerHTML = table(users, [
@@ -108,6 +111,15 @@ async function refresh() {
     $("usage").innerHTML = table(usage, [
       { label:"日期", key:"day" }, { label:"运行", render:r=>stat(r.runs) },
       { label:"prompt", render:r=>stat(r.prompt_tokens) }, { label:"completion", render:r=>stat(r.completion_tokens) },
+    ]);
+    $("codex").innerHTML = table(codex, [
+      { label:"时间", render:r=>dt(r.created_at) },
+      { label:"用户", render:r=>esc(r.wx_user_id || "-") },
+      { label:"仓库", key:"repo_alias" },
+      { label:"任务", render:r=>esc((r.prompt || "").slice(0, 80)) },
+      { label:"状态", render:r=>`<span class="status ${esc(r.status)}">${esc(r.status)}</span>` },
+      { label:"最后事件", render:r=>esc(r.last_event || "") },
+      { label:"退出码", render:r=>r.exit_code ?? "" },
     ]);
     $("reminders").innerHTML = table(reminders, [
       { label:"时间", render:r=>dt(r.run_at) }, { label:"用户", render:r=>esc(r.wx_user_id || "-") },

@@ -1,6 +1,7 @@
 import {
   bigint,
   bigserial,
+  boolean,
   index,
   integer,
   jsonb,
@@ -227,6 +228,48 @@ export const kbChunks = pgTable(
     tokens: text("tokens").array().notNull().default([]),
   },
   (t) => [uniqueIndex("kb_document_chunk_uq").on(t.documentId, t.chunkIndex)],
+);
+
+
+export const codexTasks = pgTable(
+  "codex_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    conversationKey: text("conversation_key").notNull(),
+    repoAlias: text("repo_alias").notNull(),
+    repoPath: text("repo_path").notNull(),
+    prompt: text("prompt").notNull(),
+    status: text("status").notNull().default("queued"),
+    sessionId: text("session_id"),
+    pid: integer("pid"),
+    lastEvent: text("last_event"),
+    summary: text("summary"),
+    error: text("error"),
+    exitCode: integer("exit_code"),
+    cancelRequested: boolean("cancel_requested").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("codex_tasks_queue_idx").on(t.status, t.createdAt)],
+);
+
+export const codexTaskEvents = pgTable(
+  "codex_task_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => codexTasks.id, { onDelete: "cascade" }),
+    eventType: text("event_type"),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("codex_task_events_task_idx").on(t.taskId, t.id)],
 );
 
 export type AccountRow = typeof accounts.$inferSelect;

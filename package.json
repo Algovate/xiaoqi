@@ -15,7 +15,8 @@
     "ilink:login": "pnpm --filter @xiaoqi/gateway auth",
     "ocr:build": "bash scripts/build-ocr.sh",
     "kb:ingest": "pnpm --filter @xiaoqi/worker kb:ingest",
-    "dev:api": "pnpm --filter @xiaoqi/api dev"
+    "dev:api": "pnpm --filter @xiaoqi/api dev",
+    "dev:runner": "pnpm --filter @xiaoqi/runner dev"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

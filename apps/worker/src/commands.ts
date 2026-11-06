@@ -1,6 +1,7 @@
 import { and, desc, eq, gt } from "drizzle-orm";
 import type { AppConfig, Database, MessageRow, UserRow } from "@xiaoqi/core";
-import { conversationState, messages, reminders } from "@xiaoqi/core";
+import { codexTasks, conversationState, messages, reminders } from "@xiaoqi/core";
+import { parseRepoAllowlist, parseUserAllowlist } from "@xiaoqi/core";
 import { formatShanghai, parseReminder } from "./time.js";
 import { chat } from "./llm.js";
 
@@ -16,6 +17,7 @@ export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
 可用命令：
 /summary  总结最近对话
 /remind 明天10点 交周报  设置提醒
+/codex xiaoqi 修复测试  启动 Codex 任务
 /reset    清除上下文
 /whoami   查看你的 ID
 /help     显示这条帮助`;
@@ -51,6 +53,8 @@ export async function handleCommand(
       return "已清除当前对话的上下文。";
     case "summary":
       return summarize(deps, msg, user);
+    case "codex":
+      return codexCommand(deps, msg, command);
     case "remind": {
       const parsed = parseReminder(command.args);
       if (!parsed) {
@@ -68,6 +72,95 @@ export async function handleCommand(
     default:
       return `不认识 /${command.name}。\n\n${HELP_TEXT}`;
   }
+}
+
+async function codexCommand(
+  deps: { db: Database; config: AppConfig },
+  msg: MessageRow,
+  command: Command,
+): Promise<string> {
+  const allowed = parseUserAllowlist(deps.config.CODEX_ALLOWED_USERS);
+  if (!allowed.has(msg.senderId)) {
+    return "Codex 通道未对你的微信 ID 开放。";
+  }
+  const repos = parseRepoAllowlist(deps.config.CODEX_REPOS);
+  if (repos.size === 0) return "Codex 通道未配置仓库。";
+
+  const args = command.args.trim();
+  const [head, ...rest] = args.split(/\s+/).filter(Boolean);
+
+  if (!head || head === "help") {
+    return `用法：
+/codex <repo> <任务>
+/codex list
+/codex status <id>
+/codex stop <id>
+
+可用仓库：${[...repos.keys()].join(", ")}`;
+  }
+
+  if (head === "list") {
+    const rows = await deps.db
+      .select()
+      .from(codexTasks)
+      .where(eq(codexTasks.userId, msg.userId ?? ""))
+      .orderBy(desc(codexTasks.createdAt))
+      .limit(5);
+    if (rows.length === 0) return "还没有 Codex 任务。";
+    return rows
+      .map((t) => `${t.id.slice(0, 8)}  ${t.status}  ${t.repoAlias}\n${t.prompt.slice(0, 80)}`)
+      .join("\n\n");
+  }
+
+  if (head === "status" || head === "stop") {
+    const prefix = rest.join(" ").trim();
+    if (!prefix) return `用法：/codex ${head} <任务ID前 8 位>`;
+    const rows = await deps.db
+      .select()
+      .from(codexTasks)
+      .where(eq(codexTasks.userId, msg.userId ?? ""))
+      .orderBy(desc(codexTasks.createdAt))
+      .limit(50);
+    const task = rows.find((t) => t.id.startsWith(prefix));
+    if (!task) return "没找到这个 Codex 任务。";
+    if (head === "stop") {
+      if (!["queued", "running"].includes(task.status)) return `任务已经是 ${task.status}，不用停。`;
+      await deps.db
+        .update(codexTasks)
+        .set({ cancelRequested: true })
+        .where(eq(codexTasks.id, task.id));
+      return `已请求停止 ${task.id.slice(0, 8)}。`;
+    }
+    return [
+      `任务：${task.id.slice(0, 8)}`,
+      `状态：${task.status}`,
+      `仓库：${task.repoAlias}`,
+      `最后事件：${task.lastEvent ?? "-"}`,
+      task.error ? `错误：${task.error.slice(0, 300)}` : "",
+      task.summary ? `结果：${task.summary.slice(0, 800)}` : "",
+    ].filter(Boolean).join("\n");
+  }
+
+  const repoAlias = head;
+  const repoPath = repos.get(repoAlias);
+  if (!repoPath) return `仓库 ${repoAlias} 不在 allowlist。可用：${[...repos.keys()].join(", ")}`;
+  const prompt = rest.join(" ").trim();
+  if (!prompt) return "任务内容不能为空。";
+
+  const rows = await deps.db
+    .insert(codexTasks)
+    .values({
+      accountId: msg.accountId,
+      userId: msg.userId,
+      conversationKey: msg.conversationKey,
+      repoAlias,
+      repoPath,
+      prompt,
+      status: "queued",
+    })
+    .returning({ id: codexTasks.id });
+  const id = rows[0]!.id;
+  return `已提交 Codex 任务：${id.slice(0, 8)}\n仓库：${repoAlias}\n任务：${prompt.slice(0, 200)}\n完成后我会通知你。`;
 }
 
 async function summarize(
