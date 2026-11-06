@@ -187,6 +187,48 @@ export const conversationState = pgTable("conversation_state", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+
+export const reminders = pgTable(
+  "reminders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    conversationKey: text("conversation_key").notNull(),
+    text: text("text").notNull(),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull().default("scheduled"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("reminders_due_idx").on(t.status, t.runAt)],
+);
+
+export const kbDocuments = pgTable("kb_documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  sourcePath: text("source_path"),
+  status: text("status").notNull().default("ready"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const kbChunks = pgTable(
+  "kb_chunks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => kbDocuments.id, { onDelete: "cascade" }),
+    chunkIndex: integer("chunk_index").notNull(),
+    content: text("content").notNull(),
+    tokens: text("tokens").array().notNull().default([]),
+  },
+  (t) => [uniqueIndex("kb_document_chunk_uq").on(t.documentId, t.chunkIndex)],
+);
+
 export type AccountRow = typeof accounts.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type UserRow = typeof users.$inferSelect;
