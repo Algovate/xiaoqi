@@ -92,6 +92,7 @@ async function codexCommand(
   if (!head || head === "help") {
     return `用法：
 /codex <repo> <任务>
+/codex resume <id> <追加指令>
 /codex list
 /codex status <id>
 /codex stop <id>
@@ -110,6 +111,36 @@ async function codexCommand(
     return rows
       .map((t) => `${t.id.slice(0, 8)}  ${t.status}  ${t.repoAlias}\n${t.prompt.slice(0, 80)}`)
       .join("\n\n");
+  }
+
+  if (head === "resume") {
+    const prefix = rest[0]?.trim();
+    const instruction = rest.slice(1).join(" ").trim();
+    if (!prefix || !instruction) return "用法：/codex resume <任务ID前8位> <追加指令>";
+    const rows = await deps.db
+      .select()
+      .from(codexTasks)
+      .where(eq(codexTasks.userId, msg.userId ?? ""))
+      .orderBy(desc(codexTasks.createdAt))
+      .limit(50);
+    const parent = rows.find((t) => t.id.startsWith(prefix));
+    if (!parent) return "没找到这个 Codex 任务。";
+    if (!parent.sessionId) return "这个任务没有可 resume 的 Codex session。";
+    const inserted = await deps.db
+      .insert(codexTasks)
+      .values({
+        accountId: msg.accountId,
+        userId: msg.userId,
+        conversationKey: msg.conversationKey,
+        repoAlias: parent.repoAlias,
+        repoPath: parent.repoPath,
+        prompt: instruction,
+        kind: "resume",
+        resumeSessionId: parent.sessionId,
+        status: "queued",
+      })
+      .returning({ id: codexTasks.id });
+    return `已提交 Codex resume：${inserted[0]!.id.slice(0, 8)}\n仓库：${parent.repoAlias}\n追加：${instruction.slice(0, 200)}`;
   }
 
   if (head === "status" || head === "stop") {
@@ -136,6 +167,7 @@ async function codexCommand(
       `状态：${task.status}`,
       `仓库：${task.repoAlias}`,
       `最后事件：${task.lastEvent ?? "-"}`,
+      task.diffStat ? `变更：\n${task.diffStat.slice(0, 500)}` : "",
       task.error ? `错误：${task.error.slice(0, 300)}` : "",
       task.summary ? `结果：${task.summary.slice(0, 800)}` : "",
     ].filter(Boolean).join("\n");

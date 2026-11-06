@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
@@ -13,9 +14,12 @@ interface Task {
   repo_alias: string;
   repo_path: string;
   prompt: string;
+  kind: string;
+  resume_session_id: string | null;
   status: string;
 }
 
+const execFileAsync = promisify(execFile);
 const config = loadConfig();
 const logger = createLogger("runner", config.LOG_LEVEL);
 const dbHandle = createDb(config.DATABASE_URL);
@@ -61,17 +65,20 @@ async function execute(task: Task): Promise<void> {
   }
 
   const outFile = path.join(os.tmpdir(), `xiaoqi-codex-${task.id}.txt`);
-  const args = [
-    "exec",
-    "--json",
-    "-C",
-    task.repo_path,
-    "--sandbox",
-    "workspace-write",
-    "-o",
-    outFile,
-    task.prompt,
-  ];
+  const args =
+    task.kind === "resume" && task.resume_session_id
+      ? ["exec", "resume", task.resume_session_id, "--json", "-o", outFile, task.prompt]
+      : [
+          "exec",
+          "--json",
+          "-C",
+          task.repo_path,
+          "--sandbox",
+          "workspace-write",
+          "-o",
+          outFile,
+          task.prompt,
+        ];
 
   logger.info({ taskId: task.id, repo: task.repo_alias }, "codex task started");
   const child = spawn(config.CODEX_BIN, args, {
@@ -167,6 +174,7 @@ async function execute(task: Task): Promise<void> {
       }
       await fsp.rm(outFile, { force: true }).catch(() => undefined);
 
+      const diffStat = await gitDiff(task.repo_path);
       const status = cancelled ? "cancelled" : timedOut || code !== 0 ? "failed" : "completed";
       const error = timedOut
         ? `超时（${config.CODEX_TIMEOUT_MS}ms）`
@@ -175,20 +183,27 @@ async function execute(task: Task): Promise<void> {
           : null;
 
       await pool.query(
-        "update codex_tasks set status=$2, summary=$3, error=$4, exit_code=$5, finished_at=now() where id=$1",
-        [task.id, status, summary.slice(0, 4000), error, code],
+        "update codex_tasks set status=$2, summary=$3, error=$4, exit_code=$5, diff_stat=$6, finished_at=now() where id=$1",
+        [task.id, status, summary.slice(0, 4000), error, code, diffStat],
       );
       logger.info({ taskId: task.id, status, code }, "codex task finished");
-      await notify(task, status, summary, error);
+      await notify(task, status, summary, error, diffStat);
     })().catch((err) => logger.error({ err, taskId: task.id }, "finish task failed"));
   });
 }
 
-async function notify(task: Task, status: string, summary: string, error: string | null): Promise<void> {
+async function notify(
+  task: Task,
+  status: string,
+  summary: string,
+  error: string | null,
+  diffStat: string,
+): Promise<void> {
   const short = task.id.slice(0, 8);
   const head = status === "completed" ? `✅ Codex 任务 ${short} 完成` : `❌ Codex 任务 ${short} ${status}`;
   const body = summary.trim() || error || "（无输出）";
-  const text = `${head}\n仓库：${task.repo_alias}\n\n${body.slice(0, 1200)}`;
+  const diff = diffStat.trim() ? `\n\n变更：\n${diffStat.trim().slice(0, 800)}` : "";
+  const text = `${head}\n仓库：${task.repo_alias}\n\n${body.slice(0, 1200)}${diff}`;
   try {
     const res = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/send-proactive`, {
       method: "POST",
@@ -229,6 +244,18 @@ function killTree(child: ChildProcess): void {
       // ignore
     }
   }, 3000).unref();
+}
+
+async function gitDiff(repoPath: string): Promise<string> {
+  try {
+    const [{ stdout: stat }, { stdout: status }] = await Promise.all([
+      execFileAsync("git", ["-C", repoPath, "diff", "--stat"], { timeout: 10_000, maxBuffer: 200_000 }),
+      execFileAsync("git", ["-C", repoPath, "status", "--short"], { timeout: 10_000, maxBuffer: 200_000 }),
+    ]);
+    return [stat.trim(), status.trim()].filter(Boolean).join("\n");
+  } catch {
+    return "";
+  }
 }
 
 function summarizeEvent(event: Record<string, unknown>): string {
