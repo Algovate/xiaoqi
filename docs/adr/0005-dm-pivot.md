@@ -2,7 +2,7 @@
 
 - 状态：已接受（2026-11-06）
 - 决策者：产品/架构
-- 相关：[Phase 0 结果](../phase0-results.md)、[DM v1 设计](../design-dm.md)
+- 相关：[Phase 0 结果](../phase0-results.md)、[DM v1 设计](../design.md)
 
 ## 背景
 

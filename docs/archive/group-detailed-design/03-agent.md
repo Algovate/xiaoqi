@@ -1,6 +1,6 @@
 # 小栖 Xiaoqi · 详细设计 03 · Agent、工具与 RAG
 
-> **归档提示（2026-11-06）**：Phase 0 群聊 No-Go；本文件为群版 future 参考。当前 v1 私聊设计见 [`../design-dm.md`](../../design-dm.md)。
+> **归档提示（2026-11-06）**：Phase 0 群聊 No-Go；本文件为群版 future 参考。当前 v1 私聊设计见 [`../design-dm.md`](../../design.md)。
 
 
 > 对应代码：`apps/worker/src/agent`、`tools`、`rag`、`packages/prompts`  

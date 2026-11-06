@@ -153,4 +153,4 @@ Hermes Agent 的 iLink 文档明确写了同样的限制：
 - [ ] 是否保留“转发群聊记录 → 纪要”作为后续功能
 - [x] 品牌：小栖 Xiaoqi（repo `xiaoqi`，org `xiaoqi-app`）
 
-当前 v1 设计见 [`design-dm.md`](./design-dm.md)。
+当前 v1 设计见 [`design-dm.md`](./design.md)。
