@@ -14,6 +14,11 @@ const EnvSchema = z.object({
   ILINK_APP_ID: z.string().min(1).default("bot"),
   ILINK_APP_VERSION: z.string().min(1).default("132106"),
 
+  LLM_BASE_URL: z.string().min(1).default("https://api.deepseek.com/v1"),
+  LLM_API_KEY: z.string().default(""),
+  LLM_MODEL: z.string().min(1).default("deepseek-chat"),
+  LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+
   GATEWAY_PORT: z.coerce.number().int().positive().default(4101),
   GATEWAY_INTERNAL_URL: z.string().min(1).default("http://127.0.0.1:4101"),
   WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(4102),

@@ -2,7 +2,7 @@
 
 **小栖（Xiaoqi）** 是微信里的私人 AI 助理，基于腾讯 **iLink Bot API**（微信 ClawBot）接入个人微信。
 
-> 当前阶段：**M1 已验收**（真实微信私聊 echo 通过）。下一步 M2：LLM 回答。  
+> 当前阶段：**M2 已实现**（DeepSeek 回答 + 分段）。下一步 M3：图片/PDF、摘要、知识库。  
 > 仓库名：`xiaoqi` · 品牌：**小栖 Xiaoqi** · Bot：**小栖**
 
 ## 文档
@@ -12,6 +12,7 @@
 | [品牌命名](docs/brand.md) | 小栖 Xiaoqi：中英文名、Bot 名、Git repo、命名体系 |
 | [DM v1 设计](docs/design-dm.md) | **当前开发依据**：私聊助理范围、架构、数据、里程碑 |
 | [M1 骨架](docs/m1.md) | 登录/轮询/落库/outbox/echo 的启动与验证 |
+| [M2 LLM](docs/m2.md) | 上下文、DeepSeek、typing、分段、失败兜底 |
 | [群助手设计（归档）](docs/design.md) | 原群聊方案，保留作历史/future 参考 |
 | [群版详细设计（归档）](docs/detailed-design/README.md) | 群聊实现级设计，future 参考 |
 | [协议探针](docs/protocol-probe.md) | Phase 0：群聊能力 Go/No-Go 验证清单 |
@@ -26,7 +27,7 @@
 ## 一句话方案
 
 - **入口**：微信私聊，直接发问题，不需要 @；
-- **能力**：上下文问答、图片/PDF 理解、记忆、提醒、知识库；
+- **能力**：上下文问答、DeepSeek 回答、分段、typing；图片/PDF、记忆、提醒、知识库在 M3；
 - **架构**：TypeScript 模块化单体；gateway 管长轮询/发送，worker 管 Agent，Postgres + Redis；
 - **原则**：不打扰、可删除、可停用、可追溯。
 
@@ -39,6 +40,6 @@
 
 ## 下一步
 
-1. 按 [M1 骨架](docs/m1.md) 启动并验证私聊 echo；
-2. 确认 LLM provider、试点用户、部署地域；
-3. 进入 M2：LLM 回答 + 上下文 + 分段。
+1. 重启 gateway/worker（tsx watch 会自动重载）；
+2. 私聊 bot 发一条问题，验证 DeepSeek 回答；
+3. 进入 M3：图片/PDF、摘要、知识库。

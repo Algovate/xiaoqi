@@ -20,6 +20,11 @@ const SendSchema = z.object({
   text: z.string().min(1).max(4000),
 });
 
+const TypingSchema = z.object({
+  replyToMessageId: z.string().regex(/^\d+$/),
+  on: z.boolean(),
+});
+
 export interface ServerDeps {
   config: AppConfig;
   dbHandle: DbHandle;
@@ -29,6 +34,7 @@ export interface ServerDeps {
 export async function buildServer(deps: ServerDeps) {
   const { config, dbHandle, logger } = deps;
   const { db } = dbHandle;
+  const typingTickets = new Map<string, string>();
   const app = Fastify({ loggerInstance: logger as unknown as FastifyBaseLogger });
 
   app.addHook("onRequest", async (req, reply) => {
@@ -135,10 +141,25 @@ export async function buildServer(deps: ServerDeps) {
         .update(outboundMessages)
         .set({ status: "sent", wxMessageId, sentAt: new Date() })
         .where(eq(outboundMessages.id, outbound.id));
-      await db
-        .update(runs)
-        .set({ status: "sent", finishedAt: new Date() })
-        .where(eq(runs.id, input.runId));
+
+      if (wxMessageId) {
+        await db
+          .insert(messages)
+          .values({
+            accountId: run.accountId,
+            userId: source.userId,
+            conversationKey: source.conversationKey,
+            wxMessageId,
+            senderId: account.ilinkBotId,
+            direction: "out",
+            messageType: 2,
+            itemType: "text",
+            text: input.text,
+            createdAt: new Date(),
+          })
+          .onConflictDoNothing();
+      }
+
       return { ok: true, wxMessageId, sentAt: new Date().toISOString(), deduplicated: false };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -146,12 +167,62 @@ export async function buildServer(deps: ServerDeps) {
         .update(outboundMessages)
         .set({ status: "failed", errorCode: "SEND_FAILED" })
         .where(eq(outboundMessages.id, outbound.id));
-      await db
-        .update(runs)
-        .set({ status: "failed", errorCode: "SEND_FAILED", finishedAt: new Date() })
-        .where(eq(runs.id, input.runId));
       req.log.error({ err, runId: input.runId }, "send failed");
       throw new AppError({ code: "SEND_FAILED", message, httpStatus: 502, retryable: true });
+    }
+  });
+
+  app.post("/internal/v1/typing", async (req, reply) => {
+    const parsed = TypingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: { code: "VALIDATION_ERROR", message: "bad typing payload" } });
+    }
+    const sourceRows = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, Number(parsed.data.replyToMessageId)))
+      .limit(1);
+    const source = sourceRows[0];
+    if (!source) return reply.code(404).send({ error: { code: "MESSAGE_NOT_FOUND", message: "not found" } });
+
+    const accountRows = await db.select().from(accounts).where(eq(accounts.id, source.accountId)).limit(1);
+    const account = accountRows[0];
+    if (!account?.tokenEnc) return { ok: false, reason: "ACCOUNT_NOT_READY" };
+
+    const tokenRows = await db
+      .select()
+      .from(contextTokens)
+      .where(
+        and(
+          eq(contextTokens.accountId, source.accountId),
+          eq(contextTokens.conversationKey, source.conversationKey),
+        ),
+      )
+      .limit(1);
+    if (!tokenRows[0]) return { ok: false, reason: "CONTEXT_TOKEN_MISSING" };
+
+    try {
+      const botToken = decryptSecret(account.tokenEnc, config.masterKey);
+      const contextToken = decryptSecret(tokenRows[0].tokenEnc, config.masterKey);
+      const client = new ILinkClient({
+        baseUrl: account.baseUrl,
+        token: botToken,
+        appId: config.ILINK_APP_ID,
+        clientVersion: config.ILINK_APP_VERSION,
+      });
+      const cacheKey = `${source.accountId}:${source.senderId}`;
+      let ticket = typingTickets.get(cacheKey);
+      if (!ticket) {
+        const cfg = await client.getConfig(source.senderId, contextToken);
+        ticket = cfg.typing_ticket;
+        if (ticket) typingTickets.set(cacheKey, ticket);
+      }
+      if (!ticket) return { ok: false, reason: "NO_TYPING_TICKET" };
+      await client.sendTyping(source.senderId, ticket, parsed.data.on);
+      return { ok: true };
+    } catch (err) {
+      req.log.debug({ err }, "typing failed");
+      return { ok: false, reason: "TYPING_FAILED" };
     }
   });
 

@@ -2,7 +2,10 @@ import crypto from "node:crypto";
 import type { Job } from "bullmq";
 import { eq } from "drizzle-orm";
 import type { AppConfig, Database, Logger } from "@xiaoqi/core";
-import { messages, outboundMessages, runs } from "@xiaoqi/core";
+import { messages, runs } from "@xiaoqi/core";
+import { buildContext } from "./context.js";
+import { chunkReply, sanitizeReply } from "./format.js";
+import { chat } from "./llm.js";
 
 interface DmJob {
   accountId: string;
@@ -17,6 +20,22 @@ export interface DmHandlerDeps {
 
 export function createDmHandler(deps: DmHandlerDeps) {
   const { config, db, logger } = deps;
+
+  async function typing(replyToMessageId: number, on: boolean): Promise<void> {
+    try {
+      const resp = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/typing`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-xiaoqi-internal": config.internalToken,
+        },
+        body: JSON.stringify({ replyToMessageId: String(replyToMessageId), on }),
+      });
+      if (!resp.ok) logger.debug({ status: resp.status }, "typing request failed");
+    } catch (err) {
+      logger.debug({ err }, "typing request error");
+    }
+  }
 
   return async function handle(job: Job<DmJob>): Promise<void> {
     const { accountId, messageId } = job.data;
@@ -46,8 +65,8 @@ export function createDmHandler(deps: DmHandlerDeps) {
           userId: msg.userId,
           triggerMessageId: msg.id,
           status: "running",
-          model: "echo-m1",
-          promptVersion: "m1",
+          model: config.LLM_MODEL,
+          promptVersion: "dm@2026-11-06.1",
           traceId: crypto.randomUUID(),
         })
         .onConflictDoNothing()
@@ -64,41 +83,101 @@ export function createDmHandler(deps: DmHandlerDeps) {
       return;
     }
 
-    const replyText = `收到：${msg.text?.trim() || "（非文本消息，M1 先做文本 echo）"}`;
-    logger.info({ runId: run.id, accountId, messageId }, "echoing DM");
-
-    const resp = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/send`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-xiaoqi-internal": config.internalToken,
-      },
-      body: JSON.stringify({
-        runId: run.id,
-        chunkIndex: 0,
-        replyToMessageId: String(msg.id),
-        text: replyText,
-      }),
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      await db
-        .update(runs)
-        .set({ status: "failed", errorCode: `GATEWAY_${resp.status}`, finishedAt: new Date() })
-        .where(eq(runs.id, run.id));
-      throw new Error(`gateway send failed http=${resp.status} ${body.slice(0, 300)}`);
-    }
-
-    const body = (await resp.json()) as { wxMessageId?: string; deduplicated?: boolean };
-    await db
-      .update(outboundMessages)
-      .set({ status: "sent", wxMessageId: body.wxMessageId ?? null, sentAt: new Date() })
-      .where(eq(outboundMessages.runId, run.id));
+    const startedAt = Date.now();
     await db
       .update(runs)
-      .set({ status: "sent", finishedAt: new Date() })
+      .set({
+        status: "running",
+        model: config.LLM_MODEL,
+        promptVersion: "dm@2026-11-06.1",
+        errorCode: null,
+      })
       .where(eq(runs.id, run.id));
-    logger.info({ runId: run.id, wxMessageId: body.wxMessageId }, "echo sent");
+
+    await typing(msg.id, true);
+
+    let replyText: string;
+    let errorCode: string | null = null;
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let model = config.LLM_MODEL;
+
+    try {
+      const context = await buildContext(db, msg.conversationKey, {
+        id: msg.id,
+        text: msg.text,
+        createdAt: msg.createdAt,
+        userId: msg.userId,
+      });
+      logger.info(
+        { runId: run.id, contextMessages: context.messageCount, textLength: msg.text?.length ?? 0 },
+        "calling llm",
+      );
+      const result = await chat(config, [
+        { role: "system", content: context.system },
+        { role: "user", content: context.user },
+      ]);
+      replyText = sanitizeReply(result.content);
+      promptTokens = result.promptTokens;
+      completionTokens = result.completionTokens;
+      model = result.model;
+    } catch (err) {
+      errorCode = "LLM_FAILED";
+      replyText = `这次没答上来，稍后再试。（trace: ${(run.traceId ?? "").slice(0, 8)}）`;
+      logger.error({ err, runId: run.id }, "llm failed; sending fallback");
+    }
+
+    const chunks = chunkReply(replyText);
+    try {
+      for (let i = 0; i < chunks.length; i += 1) {
+        const resp = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/send`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-xiaoqi-internal": config.internalToken,
+          },
+          body: JSON.stringify({
+            runId: run.id,
+            chunkIndex: i,
+            replyToMessageId: String(msg.id),
+            text: chunks[i],
+          }),
+        });
+        if (!resp.ok) {
+          const body = await resp.text().catch(() => "");
+          throw new Error(`gateway send failed http=${resp.status} ${body.slice(0, 300)}`);
+        }
+      }
+
+      await db
+        .update(runs)
+        .set({
+          status: errorCode ? "failed" : "sent",
+          errorCode,
+          model,
+          promptTokens,
+          completionTokens,
+          latencyMs: Date.now() - startedAt,
+          finishedAt: new Date(),
+        })
+        .where(eq(runs.id, run.id));
+      logger.info(
+        { runId: run.id, chunks: chunks.length, errorCode, model },
+        "dm answer sent",
+      );
+    } catch (err) {
+      await db
+        .update(runs)
+        .set({
+          status: "failed",
+          errorCode: errorCode ?? "SEND_FAILED",
+          latencyMs: Date.now() - startedAt,
+          finishedAt: new Date(),
+        })
+        .where(eq(runs.id, run.id));
+      throw err;
+    } finally {
+      await typing(msg.id, false);
+    }
   };
 }
