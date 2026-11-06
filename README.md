@@ -2,7 +2,7 @@
 
 **小栖（Xiaoqi）** 是微信里的私人 AI 助理，基于腾讯 **iLink Bot API**（微信 ClawBot）接入个人微信。
 
-> 当前阶段：**M1 私聊链路已实现**（fake iLink 已验证）。下一步 M2：LLM 回答。  
+> 当前阶段：**M1 已验收**（真实微信私聊 echo 通过）。下一步 M2：LLM 回答。  
 > 仓库名：`xiaoqi` · 品牌：**小栖 Xiaoqi** · Bot：**小栖**
 
 ## 文档
