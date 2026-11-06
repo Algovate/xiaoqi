@@ -4,6 +4,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import type { AppConfig, Database, MessageRow } from "@xiaoqi/core";
 import { mediaAssets } from "@xiaoqi/core";
+import { describeImage } from "./llm.js";
 import { ocrFile } from "./ocr.js";
 
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -112,8 +113,19 @@ async function ingestOne(
     } else if (ext === "txt" || ext === "md" || mime.startsWith("text/")) {
       text = plain.toString("utf8").trim();
     } else if (kind === "image") {
-      const ocr = await ocrFile(config, fullPath);
-      text = ocr ? `[图片 OCR]\n${ocr}` : "[图片已收到，但未识别出文字]";
+      let visionText = "";
+      try {
+        const vision = await describeImage(config, plain, mime);
+        visionText = vision.text;
+      } catch {
+        visionText = "";
+      }
+      if (visionText) {
+        text = `[图片内容]\n${visionText}`;
+      } else {
+        const ocr = await ocrFile(config, fullPath);
+        text = ocr ? `[图片 OCR]\n${ocr}` : "[图片已收到，但未识别出文字]";
+      }
     } else {
       text = `[文件 ${fileName} 暂不支持解析]`;
     }
