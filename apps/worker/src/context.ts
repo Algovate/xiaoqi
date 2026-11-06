@@ -1,6 +1,6 @@
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, gt, lt } from "drizzle-orm";
 import type { Database } from "@xiaoqi/core";
-import { messages } from "@xiaoqi/core";
+import { conversationState, messages } from "@xiaoqi/core";
 
 export interface BuiltContext {
   system: string;
@@ -33,7 +33,21 @@ export async function buildContext(
   db: Database,
   conversationKey: string,
   current: { id: number; text: string | null; createdAt: Date; userId: string | null },
+  attachmentText?: string,
 ): Promise<BuiltContext> {
+  const stateRows = await db
+    .select()
+    .from(conversationState)
+    .where(eq(conversationState.conversationKey, conversationKey))
+    .limit(1);
+  const state = stateRows[0];
+
+  const conditions = [
+    eq(messages.conversationKey, conversationKey),
+    lt(messages.createdAt, current.createdAt),
+  ];
+  if (state?.resetAt) conditions.push(gt(messages.createdAt, state.resetAt));
+
   const rows = await db
     .select({
       text: messages.text,
@@ -41,12 +55,7 @@ export async function buildContext(
       createdAt: messages.createdAt,
     })
     .from(messages)
-    .where(
-      and(
-        eq(messages.conversationKey, conversationKey),
-        lt(messages.createdAt, current.createdAt),
-      ),
-    )
+    .where(and(...conditions))
     .orderBy(desc(messages.createdAt))
     .limit(30);
 
@@ -56,19 +65,21 @@ export async function buildContext(
     .map((r) => `[${formatTime(r.createdAt)}] ${r.direction === "out" ? "小栖" : "你"}：${trim(r.text!, 500)}`);
 
   let context = lines.join("\n");
-  if (context.length > MAX_CONTEXT_CHARS) {
-    context = context.slice(-MAX_CONTEXT_CHARS);
-  }
+  if (context.length > MAX_CONTEXT_CHARS) context = context.slice(-MAX_CONTEXT_CHARS);
 
-  const user = [
+  const sections = [
+    state?.summary ? `<summary>\n${trim(state.summary, 3000)}\n</summary>` : "",
     context ? `<conversation>\n${context}\n</conversation>` : "",
+    attachmentText ? `<attachments>\n${trim(attachmentText, 8000)}\n</attachments>` : "",
     `<current_question>\n${current.text?.trim() || "（非文本消息）"}\n</current_question>`,
     "请直接回答当前问题。",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  ].filter(Boolean);
 
-  return { system: SYSTEM_PROMPT, user, messageCount: rows.length + 1 };
+  return {
+    system: SYSTEM_PROMPT,
+    user: sections.join("\n\n"),
+    messageCount: rows.length + 1,
+  };
 }
 
 function formatTime(date: Date): string {

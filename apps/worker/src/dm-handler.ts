@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 import type { Job } from "bullmq";
 import { eq } from "drizzle-orm";
-import type { AppConfig, Database, Logger } from "@xiaoqi/core";
-import { messages, runs } from "@xiaoqi/core";
+import type { AppConfig, Database, Logger, MessageRow } from "@xiaoqi/core";
+import { messages, runs, users } from "@xiaoqi/core";
 import { buildContext } from "./context.js";
+import { handleCommand, parseCommand } from "./commands.js";
 import { chunkReply, sanitizeReply } from "./format.js";
 import { chat } from "./llm.js";
+import { extractAttachments } from "./media.js";
 
 interface DmJob {
   accountId: string;
@@ -37,6 +39,30 @@ export function createDmHandler(deps: DmHandlerDeps) {
     }
   }
 
+  async function sendChunks(runId: string, msg: MessageRow, text: string): Promise<number> {
+    const chunks = chunkReply(text);
+    for (let i = 0; i < chunks.length; i += 1) {
+      const resp = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/send`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-xiaoqi-internal": config.internalToken,
+        },
+        body: JSON.stringify({
+          runId,
+          chunkIndex: i,
+          replyToMessageId: String(msg.id),
+          text: chunks[i],
+        }),
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        throw new Error(`gateway send failed http=${resp.status} ${body.slice(0, 300)}`);
+      }
+    }
+    return chunks.length;
+  }
+
   return async function handle(job: Job<DmJob>): Promise<void> {
     const { accountId, messageId } = job.data;
     const rows = await db
@@ -49,6 +75,11 @@ export function createDmHandler(deps: DmHandlerDeps) {
       logger.warn({ accountId, messageId }, "dm job skipped: message not found/not inbound");
       return;
     }
+
+    const userRows = msg.userId
+      ? await db.select().from(users).where(eq(users.id, msg.userId)).limit(1)
+      : [];
+    const user = userRows[0] ?? null;
 
     const existing = await db
       .select()
@@ -66,7 +97,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
           triggerMessageId: msg.id,
           status: "running",
           model: config.LLM_MODEL,
-          promptVersion: "dm@2026-11-06.1",
+          promptVersion: "dm@2026-11-06.2",
           traceId: crypto.randomUUID(),
         })
         .onConflictDoNothing()
@@ -89,10 +120,51 @@ export function createDmHandler(deps: DmHandlerDeps) {
       .set({
         status: "running",
         model: config.LLM_MODEL,
-        promptVersion: "dm@2026-11-06.1",
+        promptVersion: "dm@2026-11-06.2",
         errorCode: null,
       })
       .where(eq(runs.id, run.id));
+
+    const command = parseCommand(msg.text);
+
+    if (command) {
+      let reply: string;
+      let commandError: string | null = null;
+      try {
+        reply = await handleCommand({ db, config }, msg, user, command);
+      } catch (err) {
+        commandError = "COMMAND_FAILED";
+        reply = "这个命令没处理好，稍后再试。";
+        logger.error({ err, runId: run.id, command: command.name }, "command failed");
+      }
+      try {
+        const chunks = await sendChunks(run.id, msg, reply);
+        await db
+          .update(runs)
+          .set({
+            status: commandError ? "failed" : "sent",
+            errorCode: commandError,
+            model: "command",
+            promptVersion: "commands@2026-11-06.1",
+            latencyMs: Date.now() - startedAt,
+            finishedAt: new Date(),
+          })
+          .where(eq(runs.id, run.id));
+        logger.info({ runId: run.id, command: command.name, chunks }, "command handled");
+        return;
+      } catch (err) {
+        await db
+          .update(runs)
+          .set({
+            status: "failed",
+            errorCode: "SEND_FAILED",
+            latencyMs: Date.now() - startedAt,
+            finishedAt: new Date(),
+          })
+          .where(eq(runs.id, run.id));
+        throw err;
+      }
+    }
 
     await typing(msg.id, true);
 
@@ -103,14 +175,25 @@ export function createDmHandler(deps: DmHandlerDeps) {
     let model = config.LLM_MODEL;
 
     try {
-      const context = await buildContext(db, msg.conversationKey, {
-        id: msg.id,
-        text: msg.text,
-        createdAt: msg.createdAt,
-        userId: msg.userId,
-      });
+      const attachmentText = await extractAttachments(db, config, msg);
+      const currentQuestion = msg.text?.trim() || (attachmentText ? "请分析我发的附件" : "（非文本消息）");
+      const context = await buildContext(
+        db,
+        msg.conversationKey,
+        {
+          id: msg.id,
+          text: currentQuestion,
+          createdAt: msg.createdAt,
+          userId: msg.userId,
+        },
+        attachmentText,
+      );
       logger.info(
-        { runId: run.id, contextMessages: context.messageCount, textLength: msg.text?.length ?? 0 },
+        {
+          runId: run.id,
+          contextMessages: context.messageCount,
+          attachmentChars: attachmentText.length,
+        },
         "calling llm",
       );
       const result = await chat(config, [
@@ -127,28 +210,8 @@ export function createDmHandler(deps: DmHandlerDeps) {
       logger.error({ err, runId: run.id }, "llm failed; sending fallback");
     }
 
-    const chunks = chunkReply(replyText);
     try {
-      for (let i = 0; i < chunks.length; i += 1) {
-        const resp = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/send`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-xiaoqi-internal": config.internalToken,
-          },
-          body: JSON.stringify({
-            runId: run.id,
-            chunkIndex: i,
-            replyToMessageId: String(msg.id),
-            text: chunks[i],
-          }),
-        });
-        if (!resp.ok) {
-          const body = await resp.text().catch(() => "");
-          throw new Error(`gateway send failed http=${resp.status} ${body.slice(0, 300)}`);
-        }
-      }
-
+      const chunks = await sendChunks(run.id, msg, replyText);
       await db
         .update(runs)
         .set({
@@ -161,10 +224,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
           finishedAt: new Date(),
         })
         .where(eq(runs.id, run.id));
-      logger.info(
-        { runId: run.id, chunks: chunks.length, errorCode, model },
-        "dm answer sent",
-      );
+      logger.info({ runId: run.id, chunks, errorCode, model }, "dm answer sent");
     } catch (err) {
       await db
         .update(runs)

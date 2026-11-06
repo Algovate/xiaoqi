@@ -159,6 +159,34 @@ export const outbox = pgTable(
   (t) => [index("outbox_due_idx").on(t.status, t.nextAt)],
 );
 
+
+export const mediaAssets = pgTable(
+  "media_assets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: bigint("message_id", { mode: "number" })
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    mime: text("mime"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    storageKey: text("storage_key").notNull(),
+    extractedText: text("extracted_text"),
+    status: text("status").notNull().default("pending"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("media_message_key_uq").on(t.messageId, t.storageKey)],
+);
+
+export const conversationState = pgTable("conversation_state", {
+  conversationKey: text("conversation_key").primaryKey(),
+  summary: text("summary"),
+  summaryTokens: integer("summary_tokens").notNull().default(0),
+  resetAt: timestamp("reset_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type AccountRow = typeof accounts.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type UserRow = typeof users.$inferSelect;
