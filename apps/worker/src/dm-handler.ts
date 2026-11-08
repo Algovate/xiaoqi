@@ -13,7 +13,7 @@ import {
   type CommandEffects,
 } from "./commands.js";
 import { welcomeText } from "./welcome.js";
-import { chunkReply } from "./format.js";
+import { sendImage, sendTextChunks } from "./send.js";
 import { dailyTokensUsed } from "./budget.js";
 import { maybeAlertBudget } from "./alerts.js";
 
@@ -45,59 +45,6 @@ export function createDmHandler(deps: DmHandlerDeps) {
       if (!resp.ok) logger.debug({ status: resp.status }, "typing request failed");
     } catch (err) {
       logger.debug({ err }, "typing request error");
-    }
-  }
-
-  async function sendChunks(runId: string, msg: MessageRow, text: string): Promise<number> {
-    const chunks = chunkReply(text);
-    for (let i = 0; i < chunks.length; i += 1) {
-      const resp = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/send`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-xiaoqi-internal": config.internalToken,
-        },
-        body: JSON.stringify({
-          runId,
-          chunkIndex: i,
-          replyToMessageId: String(msg.id),
-          text: chunks[i],
-        }),
-      });
-      if (!resp.ok) {
-        const body = await resp.text().catch(() => "");
-        throw new Error(`gateway send failed http=${resp.status} ${body.slice(0, 300)}`);
-      }
-    }
-    return chunks.length;
-  }
-
-  async function sendImage(
-    runId: string,
-    msg: MessageRow,
-    media: { path: string; mime: string; filename: string },
-  ): Promise<void> {
-    const data = await fsp.readFile(media.path);
-    if (data.length > config.MEDIA_OUTBOUND_MAX_BYTES) {
-      throw new Error(`image too large: ${data.length} bytes`);
-    }
-    const resp = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/send-image`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-xiaoqi-internal": config.internalToken,
-      },
-      body: JSON.stringify({
-        runId,
-        replyToMessageId: String(msg.id),
-        mime: media.mime,
-        filename: media.filename,
-        dataBase64: data.toString("base64"),
-      }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      throw new Error(`gateway image send failed http=${resp.status} ${body.slice(0, 300)}`);
     }
   }
 
@@ -182,7 +129,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
         });
         if (used >= config.MAX_DAILY_TOKENS) {
           const text = `今天的 AI 额度已用完（上限 ${config.MAX_DAILY_TOKENS.toLocaleString()} tokens），明天再试。`;
-          await sendChunks(run.id, msg, text);
+          await sendTextChunks(config, run.id, msg, text);
           await db
             .update(runs)
             .set({
@@ -218,7 +165,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
         if (effects.media) {
           const media = effects.media;
           try {
-            await sendImage(run.id, msg, media);
+            await sendImage(config, run.id, msg, media);
             await fsp.unlink(media.path).catch(() => undefined);
           } catch (err) {
             commandError = "IMAGE_SEND_FAILED";
@@ -226,7 +173,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
             logger.warn({ err, runId: run.id }, "image send failed");
           }
         }
-        const chunks = await sendChunks(run.id, msg, reply);
+        const chunks = await sendTextChunks(config, run.id, msg, reply);
         await db
           .update(runs)
           .set({
@@ -282,7 +229,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
 
     if (answerMedia) {
       try {
-        await sendImage(run.id, msg, answerMedia);
+        await sendImage(config, run.id, msg, answerMedia);
         await fsp.unlink(answerMedia.path).catch(() => undefined);
       } catch (err) {
         logger.warn({ err, runId: run.id }, "answer image send failed");
@@ -292,7 +239,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
     }
 
     try {
-      const chunks = await sendChunks(run.id, msg, replyText);
+      const chunks = await sendTextChunks(config, run.id, msg, replyText);
       await db
         .update(runs)
         .set({

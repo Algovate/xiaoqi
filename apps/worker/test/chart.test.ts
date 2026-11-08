@@ -4,12 +4,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AppConfig, MessageRow } from "@xiaoqi/core";
 import {
-  buildChartSvg,
   chartSpecFromTool,
   parseChartCommand,
-  renderChartPng,
   RENDER_CHART_TOOL,
 } from "../src/chart.js";
+import { buildChartSvg, renderChartPng } from "../src/chart-render.js";
 import { handleCommand } from "../src/commands.js";
 
 describe("parseChartCommand", () => {

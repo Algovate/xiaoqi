@@ -8,7 +8,8 @@ import { chat, type ChatMessage, type ChatResult, type ToolDefinition } from "./
 import { extractAttachments } from "./media.js";
 import { sanitizeReply } from "./format.js";
 import { chatWithTools } from "./agent.js";
-import { chartSpecFromTool, RENDER_CHART_TOOL, renderChartPng } from "./chart.js";
+import { chartSpecFromTool, RENDER_CHART_TOOL } from "./chart.js";
+import { renderChartPng } from "./chart-render.js";
 import { RENDER_MERMAID_TOOL, renderMermaidPng } from "./mermaid.js";
 import {
   executeWebSearchTool,

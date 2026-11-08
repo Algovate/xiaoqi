@@ -7,7 +7,8 @@ import { formatShanghai, parseReminder } from "./time.js";
 import { chat } from "./llm.js";
 import { handleTaskCommand } from "./task-commands.js";
 import { isWebSearchEnabled } from "./web-search.js";
-import { CHART_USAGE, parseChartCommand, renderChartPng } from "./chart.js";
+import { CHART_USAGE, parseChartCommand } from "./chart.js";
+import { renderChartPng } from "./chart-render.js";
 import { MERMAID_USAGE, renderMermaidPng } from "./mermaid.js";
 
 export interface Command {
