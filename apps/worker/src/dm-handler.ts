@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import fsp from "node:fs/promises";
 import type { Job } from "bullmq";
 import { eq } from "drizzle-orm";
 import type { Pool } from "pg";
@@ -14,10 +13,11 @@ import {
   type CommandEffects,
 } from "./commands.js";
 import { welcomeText } from "./welcome.js";
-import { sendFile, sendImage, sendTextChunks } from "./send.js";
+import { sendTextChunks } from "./send.js";
 import { dailyTokensUsed } from "./budget.js";
 import { maybeAlertBudget } from "./alerts.js";
-import { latestInbound, loadInboundBurst } from "./inbound.js";
+import { coalesceInbound } from "./inbound.js";
+import { deliverAttachments } from "./deliver.js";
 
 interface DmJob {
   accountId: string;
@@ -64,18 +64,12 @@ export function createDmHandler(deps: DmHandlerDeps) {
     }
 
     // Coalesce a short inbound burst (file + text often arrive as two messages).
-    if (config.INBOUND_COALESCE_MS > 0) {
-      await new Promise((resolve) => setTimeout(resolve, config.INBOUND_COALESCE_MS));
-    }
-    const latest = await latestInbound(db, msg.conversationKey);
-    if (latest && latest.id !== msg.id) {
-      logger.info(
-        { accountId, messageId: msg.id, latestMessageId: latest.id },
-        "dm job coalesced into newer message",
-      );
+    const coalesced = await coalesceInbound(db, msg, config.INBOUND_COALESCE_MS);
+    if (!coalesced) {
+      logger.info({ accountId, messageId: msg.id }, "dm job coalesced into newer message");
       return;
     }
-    msg = await loadInboundBurst(db, msg);
+    msg = coalesced;
 
     const userRows = msg.userId
       ? await db.select().from(users).where(eq(users.id, msg.userId)).limit(1)
@@ -181,28 +175,9 @@ export function createDmHandler(deps: DmHandlerDeps) {
         logger.error({ err, runId: run.id, command: command.name }, "command failed");
       }
       try {
-        if (effects.media) {
-          const media = effects.media;
-          try {
-            await sendImage(config, run.id, msg, media);
-            await fsp.unlink(media.path).catch(() => undefined);
-          } catch (err) {
-            commandError = "IMAGE_SEND_FAILED";
-            reply += "\n\n（图片发送失败，稍后再试）";
-            logger.warn({ err, runId: run.id }, "image send failed");
-          }
-        }
-        if (effects.file) {
-          const file = effects.file;
-          try {
-            await sendFile(config, run.id, msg, file);
-            await fsp.unlink(file.path).catch(() => undefined);
-          } catch (err) {
-            commandError = "FILE_SEND_FAILED";
-            reply += "\n\n（文件发送失败，稍后再试）";
-            logger.warn({ err, runId: run.id }, "file send failed");
-          }
-        }
+        const delivered = await deliverAttachments({ config, logger }, run.id, msg, effects);
+        if (delivered.errorCode) commandError = delivered.errorCode;
+        for (const note of delivered.notes) reply += `\n\n${note}`;
         const chunks = await sendTextChunks(config, run.id, msg, reply);
         await db
           .update(runs)
@@ -259,27 +234,14 @@ export function createDmHandler(deps: DmHandlerDeps) {
       answerFile = answer.file;
     }
 
-    if (answerMedia) {
-      try {
-        await sendImage(config, run.id, msg, answerMedia);
-        await fsp.unlink(answerMedia.path).catch(() => undefined);
-      } catch (err) {
-        logger.warn({ err, runId: run.id }, "answer image send failed");
-        replyText += "\n\n（图片发送失败，稍后再试）";
-        errorCode = errorCode ?? "IMAGE_SEND_FAILED";
-      }
-    }
-
-    if (answerFile) {
-      try {
-        await sendFile(config, run.id, msg, answerFile);
-        await fsp.unlink(answerFile.path).catch(() => undefined);
-      } catch (err) {
-        logger.warn({ err, runId: run.id }, "answer file send failed");
-        replyText += "\n\n（代码文件发送失败，稍后再试）";
-        errorCode = errorCode ?? "FILE_SEND_FAILED";
-      }
-    }
+    const delivered = await deliverAttachments(
+      { config, logger },
+      run.id,
+      msg,
+      { media: answerMedia, file: answerFile },
+    );
+    if (delivered.errorCode) errorCode = errorCode ?? delivered.errorCode;
+    for (const note of delivered.notes) replyText += `\n\n${note}`;
 
     try {
       const chunks = await sendTextChunks(config, run.id, msg, replyText);

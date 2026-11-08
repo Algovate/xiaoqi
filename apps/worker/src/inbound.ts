@@ -5,7 +5,18 @@ import { messages } from "@xiaoqi/core";
 const MAX_BURST = 20;
 const MAX_AGE_MS = 5_000;
 
-export async function latestInbound(
+export async function coalesceInbound(
+  db: Database,
+  msg: MessageRow,
+  waitMs: number,
+): Promise<MessageRow | null> {
+  if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+  const latest = await latestInbound(db, msg.conversationKey);
+  if (latest && latest.id !== msg.id) return null;
+  return loadInboundBurst(db, msg);
+}
+
+async function latestInbound(
   db: Database,
   conversationKey: string,
 ): Promise<MessageRow | null> {
@@ -19,7 +30,7 @@ export async function latestInbound(
 }
 
 /** Merge a contiguous inbound burst so file+text is handled as one turn. */
-export async function loadInboundBurst(
+async function loadInboundBurst(
   db: Database,
   latest: MessageRow,
 ): Promise<MessageRow> {
