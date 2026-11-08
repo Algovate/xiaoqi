@@ -115,6 +115,7 @@ getupdates
 
 - `/chart bar|line|pie 标题 | 标签=数值,...` 由 worker 解析并生成 SVG，再用 macOS `sips` 转 PNG。
 - 多系列：`标签=数值1/数值2,... | 系列1/系列2`，支持分组柱状和多条折线；最多 4 个系列。
+- 画布按数据量自适应：少量数据 620 宽，复杂图表 800 宽，提升微信缩略图可读性。
 - 模型也可通过 `render_chart` 工具自然语言触发；工具参数校验后才渲染，图片先于文字说明发送。
 - 图片通过 gateway `/internal/v1/send-image`（内部 base64）发送，不经过任意文件路径。
 - gateway 调 iLink `getuploadurl` → AES-128-ECB/PKCS#7 加密 → CDN POST → `sendmessage` 的 `image_item`。
@@ -124,7 +125,7 @@ getupdates
 ### 3.8 Mermaid 架构图 / 流程图
 
 - `/mermaid <Mermaid 源码>` 或模型 `render_mermaid` 工具触发。
-- worker 把源码 base64url 编码，请求 `mermaid.ink/img/...?bgColor=white&type=png&width=900`。
+- worker 把源码 base64url 编码，请求 `mermaid.ink/img/...?bgColor=white&type=png&width=600`。
 - 返回 PNG/JPEG/WebP，校验魔数和大小后走既有图片出站链路。
 - 源码会发送给 mermaid.ink；敏感架构图可设 `MERMAID_ENABLED=false` 关闭。
 - 失败时回退文本提示，不影响对话。

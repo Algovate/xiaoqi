@@ -44,7 +44,7 @@ describe("renderMermaidPng", () => {
       expect(url).toContain("https://mermaid.test/img/");
       expect(url).toContain("bgColor=white");
       expect(url).toContain("type=png");
-      expect(url).toContain("width=900");
+      expect(url).toContain("width=600");
       const encoded = url.split("/img/")[1]!.split("?")[0]!;
       expect(Buffer.from(encoded, "base64url").toString("utf8")).toBe(code);
 

@@ -8,26 +8,31 @@ import type { ChartSpec } from "./chart.js";
 const execFileAsync = promisify(execFile);
 
 const WIDTH = 800;
+const COMPACT_WIDTH = 620;
 const HEIGHT = 640;
 const MARGIN = { top: 96, right: 36, bottom: 96, left: 72 };
 const COLORS = ["#4f7cff", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"];
 
 export function buildChartSvg(spec: ChartSpec): string {
   const title = escapeXml(spec.title);
+  const width =
+    spec.type !== "pie" && spec.labels.length <= 5 && spec.series.length <= 2
+      ? COMPACT_WIDTH
+      : WIDTH;
   const plot = {
     x: MARGIN.left,
     y: MARGIN.top,
-    width: WIDTH - MARGIN.left - MARGIN.right,
+    width: width - MARGIN.left - MARGIN.right,
     height: HEIGHT - MARGIN.top - MARGIN.bottom,
   };
   const body = spec.type === "pie" ? pieChart(spec, plot) : axisChart(spec, plot);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
-  <rect width="${WIDTH}" height="${HEIGHT}" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${HEIGHT}" viewBox="0 0 ${width} ${HEIGHT}">
+  <rect width="${width}" height="${HEIGHT}" fill="#ffffff"/>
   <g font-family="PingFang SC, Heiti SC, Microsoft YaHei, Arial, sans-serif">
     <text x="${MARGIN.left}" y="56" font-size="34" font-weight="600" fill="#111827">${title}</text>
-    <text x="${WIDTH - MARGIN.right}" y="${HEIGHT - 20}" text-anchor="end" font-size="14" fill="#9ca3af">小栖生成</text>
+    <text x="${width - MARGIN.right}" y="${HEIGHT - 20}" text-anchor="end" font-size="14" fill="#9ca3af">小栖生成</text>
     ${body}
   </g>
 </svg>`;

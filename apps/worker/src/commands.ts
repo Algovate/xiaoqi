@@ -28,7 +28,7 @@ export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
 /summary  总结最近对话
 /search 今天上海天气     联网搜索并回答
 /chart bar 月销量 | 一月=120,二月=180  生成图表
-/mermaid graph LR A[用户]-->B[小栖]  画架构/流程图
+/mermaid graph TD; A[用户]-->B[小栖]  画架构/流程图
 /remind 明天10点 交周报  设置提醒
 /codex xiaoqi 修复测试  启动 Codex 任务
 /dsh xiaoqi 分析仓库    启动 DSH 任务

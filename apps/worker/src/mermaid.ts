@@ -6,22 +6,22 @@ import { imageMimeOf } from "@xiaoqi/core";
 import type { ToolDefinition } from "./llm.js";
 
 const MAX_CODE_CHARS = 4_000;
-const IMAGE_WIDTH = 900;
+const IMAGE_WIDTH = 600;
 
 export const MERMAID_USAGE = `用法：
-/mermaid graph LR
+/mermaid graph TD
   A[用户] --> B[网关]
   B --> C[Worker]
   C --> D[LLM]
 
-也支持 graph TD、sequenceDiagram 等常用 Mermaid 类型。`;
+也支持 graph LR、sequenceDiagram 等常用 Mermaid 类型。`;
 
 export const RENDER_MERMAID_TOOL: ToolDefinition = {
   type: "function",
   function: {
     name: "render_mermaid",
     description:
-      "把 Mermaid 源码渲染成架构图/流程图/时序图并发送图片。用户明确要求画架构、流程或时序图时调用；code 传完整 Mermaid 源码，优先 graph LR 横向布局。",
+      "把 Mermaid 源码渲染成架构图/流程图/时序图并发送图片。用户明确要求画架构、流程或时序图时调用；code 传完整 Mermaid 源码，优先 graph TD 竖向布局，手机更易读；节点很多时再用 graph LR。",
     parameters: {
       type: "object",
       properties: {

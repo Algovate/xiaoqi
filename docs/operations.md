@@ -152,7 +152,7 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 也可以直接说“画一个小栖的架构图……”，模型会调用 `render_mermaid`。
 
 - 渲染走 `mermaid.ink`，源码会发送给该外部服务；敏感架构图请设 `MERMAID_ENABLED=false`。
-- 默认 `type=png`、白底、宽 900；返回图片走现有 iLink 图片出站。
+- 默认 `type=png`、白底、宽 600；返回图片走现有 iLink 图片出站。
 - 服务不可用/超时/返回非图片时回退文本提示。
 
 ---
