@@ -12,6 +12,7 @@ import { chatWithTools } from "./agent.js";
 import { chartSpecFromTool, RENDER_CHART_TOOL } from "./chart.js";
 import { renderChartPng } from "./chart-render.js";
 import { RENDER_MERMAID_TOOL, renderMermaidPng } from "./mermaid.js";
+import { extractCodeBlocks, removeCodeBlocks, writeCodeFile } from "./code.js";
 import {
   executeWebSearchTool,
   formatSourceList,
@@ -28,6 +29,7 @@ export interface AnswerResult {
   completionTokens: number;
   model: string;
   media?: { path: string; mime: string; filename: string };
+  file?: { path: string; mime: string; filename: string };
 }
 
 export interface AnswerOptions {
@@ -216,7 +218,23 @@ export async function generateAnswer(
       "llm completed",
     );
 
-    let text = sanitizeReply(result.content);
+    let codeFile: AnswerResult["file"];
+    let content = result.content;
+    const codeBlocks = config.MEDIA_OUTBOUND_ENABLED ? extractCodeBlocks(content) : [];
+    if (codeBlocks.length > 0) {
+      try {
+        codeFile = await writeCodeFile(
+          codeBlocks,
+          path.resolve(config.MEDIA_DIR, "outbound"),
+          config.MEDIA_OUTBOUND_MAX_BYTES,
+        );
+        content = `${removeCodeBlocks(content)}\n\n代码已作为文件发送：${codeFile.filename}`;
+      } catch (err) {
+        logger.warn({ err, runId }, "code file creation failed");
+      }
+    }
+
+    let text = sanitizeReply(content);
     if (searchSession.sources.length > 0 && !/https?:\/\//i.test(text)) {
       text += `\n\n来源：\n${formatSourceList(searchSession.sources)}`;
     }
@@ -228,6 +246,7 @@ export async function generateAnswer(
       completionTokens: result.completionTokens + attachmentCompletionTokens,
       model: result.model,
       media: mediaSession.media,
+      file: codeFile,
     };
   } catch (err) {
     logger.error({ err, runId }, "llm failed; sending fallback");

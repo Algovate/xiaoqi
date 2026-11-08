@@ -174,6 +174,7 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 - CSV 使用 UTF-8 BOM，Excel 打开中文不乱码。
 - 文件上限 `MEDIA_OUTBOUND_MAX_BYTES`；文件名取 basename，不接受任意路径。
 - 发送失败回退文字提示。
+- 代码回答会自动生成 `.py`/`.js`/`.ts` 等文件发送；微信文本会折叠单换行，文件能保留缩进。
 
 ---
 

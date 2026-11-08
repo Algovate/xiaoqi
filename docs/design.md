@@ -132,6 +132,7 @@ getupdates
 - gateway `/internal/v1/send-file` 接受内部 base64，校验文件名/大小，写入 `outbound_messages(kind=file)`。
 - `/export csv` 导出当前对话最近 500 条消息，UTF-8 BOM，走文件出站。
 - 文件上限 `MEDIA_OUTBOUND_MAX_BYTES`，失败回退文本。
+- 回答中的 Markdown 代码块自动落成 `.py`/`.js`/`.ts` 等文件发送，避免微信折叠单换行、破坏代码缩进；聊天只留说明。
 
 ### 3.9 Mermaid 架构图 / 流程图
 
