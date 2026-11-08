@@ -14,6 +14,7 @@ import { renderChartPng } from "./chart-render.js";
 import { RENDER_MERMAID_TOOL, renderMermaidPng } from "./mermaid.js";
 import { extractCodeBlocks, removeCodeBlocks, writeCodeFile } from "./code.js";
 import { buildHtmlDocument, RENDER_HTML_TOOL, writeHtmlFile } from "./html.js";
+import type { OutboundFile } from "./outbound-file.js";
 import {
   executeWebSearchTool,
   formatSourceList,
@@ -29,8 +30,8 @@ export interface AnswerResult {
   promptTokens: number;
   completionTokens: number;
   model: string;
-  media?: { path: string; mime: string; filename: string };
-  file?: { path: string; mime: string; filename: string };
+  media?: OutboundFile;
+  file?: OutboundFile;
 }
 
 export interface AnswerOptions {
@@ -129,8 +130,8 @@ export async function generateAnswer(
     const chartEnabled = config.MEDIA_OUTBOUND_ENABLED;
     const mermaidEnabled = config.MERMAID_ENABLED && chartEnabled;
     const searchSession: WebSearchSession = { sources: [], nextIndex: 1 };
-    const mediaSession: { media?: { path: string; mime: string; filename: string } } = {};
-    const fileSession: { file?: { path: string; mime: string; filename: string } } = {};
+    const mediaSession: { media?: OutboundFile } = {};
+    const fileSession: { file?: OutboundFile } = {};
 
     async function acceptMedia(file: { path: string; mime: string }): Promise<void> {
       if (mediaSession.media) {
@@ -239,7 +240,7 @@ export async function generateAnswer(
       "llm completed",
     );
 
-    let codeFile: AnswerResult["file"];
+    let codeFile: OutboundFile | undefined;
     let content = result.content;
     const codeBlocks =
       config.MEDIA_OUTBOUND_ENABLED && !fileSession.file ? extractCodeBlocks(content) : [];

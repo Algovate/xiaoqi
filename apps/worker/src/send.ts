@@ -1,14 +1,10 @@
 import fsp from "node:fs/promises";
 import type { AppConfig, MessageRow } from "@xiaoqi/core";
 import { chunkReply } from "./format.js";
+import type { OutboundFile } from "./outbound-file.js";
 
-export interface SendMedia {
-  path: string;
-  mime: string;
-  filename: string;
-}
-
-export type SendFile = SendMedia;
+export type SendMedia = OutboundFile;
+export type SendFile = OutboundFile;
 
 function headers(config: AppConfig): Record<string, string> {
   return {

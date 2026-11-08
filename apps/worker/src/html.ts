@@ -1,7 +1,5 @@
-import crypto from "node:crypto";
-import fsp from "node:fs/promises";
-import path from "node:path";
 import type { ToolDefinition } from "./llm.js";
+import { type OutboundFile, writeOutboundFile } from "./outbound-file.js";
 
 const MAX_HTML_BYTES = 300_000;
 
@@ -60,20 +58,15 @@ export function buildHtmlDocument(raw: string, title = "小栖交互页"): strin
   return doc;
 }
 
-export async function writeHtmlFile(
-  html: string,
-  outputDir: string,
-): Promise<{ path: string; mime: string; filename: string }> {
-  const data = Buffer.from(html, "utf8");
-  if (data.length > MAX_HTML_BYTES) {
-    throw new Error(`HTML 太大（${data.length} bytes）`);
-  }
-
-  await fsp.mkdir(outputDir, { recursive: true });
-  const filename = `xiaoqi-interactive-${crypto.randomUUID()}.html`;
-  const filePath = path.join(outputDir, filename);
-  await fsp.writeFile(filePath, data, { mode: 0o600 });
-  return { path: filePath, mime: "text/html", filename };
+export async function writeHtmlFile(html: string, outputDir: string): Promise<OutboundFile> {
+  return writeOutboundFile(
+    outputDir,
+    "xiaoqi-interactive",
+    Buffer.from(html, "utf8"),
+    "html",
+    "text/html",
+    MAX_HTML_BYTES,
+  );
 }
 
 function escapeHtml(value: string): string {

@@ -1,6 +1,4 @@
-import crypto from "node:crypto";
-import fsp from "node:fs/promises";
-import path from "node:path";
+import { type OutboundFile, writeOutboundFile } from "./outbound-file.js";
 
 const CODE_FENCE = /```([\w+-]*)\n([\s\S]*?)```/g;
 
@@ -29,7 +27,7 @@ export async function writeCodeFile(
   blocks: CodeBlock[],
   outputDir: string,
   maxBytes: number,
-): Promise<{ path: string; mime: string; filename: string }> {
+): Promise<OutboundFile> {
   const ext = extensionFor(blocks);
   const body =
     blocks.length === 1
@@ -37,14 +35,14 @@ export async function writeCodeFile(
       : `${blocks
           .map((block, index) => `# ===== block ${index + 1}: ${block.language || "text"} =====\n${block.code}`)
           .join("\n\n")}\n`;
-  const data = Buffer.from(body, "utf8");
-  if (data.length > maxBytes) throw new Error(`code file too large: ${data.length} bytes`);
-
-  await fsp.mkdir(outputDir, { recursive: true });
-  const filename = `xiaoqi-code-${crypto.randomUUID()}.${ext}`;
-  const filePath = path.join(outputDir, filename);
-  await fsp.writeFile(filePath, data, { mode: 0o600 });
-  return { path: filePath, mime: mimeFor(ext), filename };
+  return writeOutboundFile(
+    outputDir,
+    "xiaoqi-code",
+    Buffer.from(body, "utf8"),
+    ext,
+    mimeFor(ext),
+    maxBytes,
+  );
 }
 
 function extensionFor(blocks: CodeBlock[]): string {

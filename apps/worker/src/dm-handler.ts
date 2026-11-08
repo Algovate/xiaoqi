@@ -4,6 +4,7 @@ import type { Job } from "bullmq";
 import { eq } from "drizzle-orm";
 import type { Pool } from "pg";
 import type { AppConfig, Database, Logger, MessageRow } from "@xiaoqi/core";
+import type { OutboundFile } from "./outbound-file.js";
 import { agentDuration, budgetExceeded, llmTokens, messages, runs, runsTotal, users } from "@xiaoqi/core";
 import { generateAnswer } from "./answer.js";
 import {
@@ -226,8 +227,8 @@ export function createDmHandler(deps: DmHandlerDeps) {
     let promptTokens = 0;
     let completionTokens = 0;
     let model = config.LLM_MODEL;
-    let answerMedia: { path: string; mime: string; filename: string } | undefined;
-    let answerFile: { path: string; mime: string; filename: string } | undefined;
+    let answerMedia: OutboundFile | undefined;
+    let answerFile: OutboundFile | undefined;
 
     {
       const answer = await generateAnswer({ config, db, pool, logger }, msg, run.id, run.traceId, user, {

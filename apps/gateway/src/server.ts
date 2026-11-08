@@ -15,7 +15,14 @@ import {
   metricsContentType,
   metricsText,
 } from "@xiaoqi/core";
-import { loadSendContext, recordOutbound, sendFile, sendImage, sendText } from "./outbound.js";
+import {
+  loadSendContext,
+  recordOutbound,
+  sendFile,
+  sendImage,
+  sendText,
+  type SendContext,
+} from "./outbound.js";
 import { createTypingService } from "./typing.js";
 
 const SendSchema = z.object({
@@ -86,6 +93,105 @@ export async function buildServer(deps: ServerDeps) {
       throw new AppError({ code: "MESSAGE_NOT_FOUND", message: "source message not found", httpStatus: 404 });
     }
     return { run, source };
+  }
+
+  async function sendMedia(
+    input: {
+      runId: string;
+      replyToMessageId: string;
+      chunkIndex: number;
+      kind: "image" | "file";
+      mime: string;
+      filename: string;
+      data: Buffer;
+      recordText: string;
+      itemType: "image" | "file";
+      label: string;
+      send: (
+        ctx: SendContext,
+        data: Buffer,
+        filename: string,
+        mime: string,
+        clientId: string,
+      ) => Promise<{ wxMessageId: string }>;
+    },
+    log: FastifyBaseLogger,
+  ) {
+    const { run, source } = await loadRunAndSource(input.runId, input.replyToMessageId);
+
+    await db
+      .insert(outboundMessages)
+      .values({
+        runId: input.runId,
+        chunkIndex: input.chunkIndex,
+        kind: input.kind,
+        storageKey: input.filename,
+        mime: input.mime,
+        sizeBytes: input.data.length,
+        status: "pending",
+      })
+      .onConflictDoNothing();
+
+    const outRows = await db
+      .select()
+      .from(outboundMessages)
+      .where(
+        and(
+          eq(outboundMessages.runId, input.runId),
+          eq(outboundMessages.chunkIndex, input.chunkIndex),
+        ),
+      )
+      .limit(1);
+    const outbound = outRows[0];
+    if (!outbound) throw new AppError({ code: "OUTBOUND_NOT_FOUND", message: "outbound row missing" });
+    if (outbound.status === "sent") {
+      sendTotal.inc({ result: "deduplicated" });
+      return { ok: true, wxMessageId: outbound.wxMessageId, sentAt: outbound.sentAt, deduplicated: true };
+    }
+
+    const sendContext = await loadSendContext(
+      db,
+      config,
+      run.accountId,
+      source.conversationKey,
+      source.senderId,
+    );
+
+    const sendStarted = process.hrtime.bigint();
+    try {
+      const { wxMessageId } = await input.send(
+        sendContext,
+        input.data,
+        input.filename,
+        input.mime,
+        `xiaoqi-${input.runId}-${input.kind}`,
+      );
+      sendDuration.observe(Number(process.hrtime.bigint() - sendStarted) / 1e9);
+      sendTotal.inc({ result: "sent" });
+      await db
+        .update(outboundMessages)
+        .set({ status: "sent", wxMessageId, sentAt: new Date() })
+        .where(eq(outboundMessages.id, outbound.id));
+      await recordOutbound(db, {
+        accountId: run.accountId,
+        userId: source.userId,
+        conversationKey: source.conversationKey,
+        senderId: sendContext.account.ilinkBotId,
+        wxMessageId,
+        text: input.recordText,
+        itemType: input.itemType,
+      });
+      return { ok: true, wxMessageId, sentAt: new Date().toISOString(), deduplicated: false };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendTotal.inc({ result: "failed" });
+      await db
+        .update(outboundMessages)
+        .set({ status: "failed", errorCode: "SEND_FAILED" })
+        .where(eq(outboundMessages.id, outbound.id));
+      log.error({ err, runId: input.runId }, `${input.label} send failed`);
+      throw new AppError({ code: "SEND_FAILED", message, httpStatus: 502, retryable: true });
+    }
   }
 
   app.addHook("onRequest", async (req, reply) => {
@@ -206,82 +312,22 @@ export async function buildServer(deps: ServerDeps) {
       throw new AppError({ code: "INVALID_IMAGE", message: "image bytes do not match mime", httpStatus: 400 });
     }
 
-    const { run, source } = await loadRunAndSource(input.runId, input.replyToMessageId);
-
-    const storageKey = path.basename(input.filename);
-    await db
-      .insert(outboundMessages)
-      .values({
+    return sendMedia(
+      {
         runId: input.runId,
+        replyToMessageId: input.replyToMessageId,
         chunkIndex: IMAGE_CHUNK_INDEX,
         kind: "image",
-        storageKey,
         mime: detectedMime,
-        sizeBytes: image.length,
-        status: "pending",
-      })
-      .onConflictDoNothing();
-
-    const outRows = await db
-      .select()
-      .from(outboundMessages)
-      .where(
-        and(
-          eq(outboundMessages.runId, input.runId),
-          eq(outboundMessages.chunkIndex, IMAGE_CHUNK_INDEX),
-        ),
-      )
-      .limit(1);
-    const outbound = outRows[0];
-    if (!outbound) throw new AppError({ code: "OUTBOUND_NOT_FOUND", message: "outbound row missing" });
-    if (outbound.status === "sent") {
-      sendTotal.inc({ result: "deduplicated" });
-      return { ok: true, wxMessageId: outbound.wxMessageId, sentAt: outbound.sentAt, deduplicated: true };
-    }
-
-    const sendContext = await loadSendContext(
-      db,
-      config,
-      run.accountId,
-      source.conversationKey,
-      source.senderId,
-    );
-
-    const sendStarted = process.hrtime.bigint();
-    try {
-      const { wxMessageId } = await sendImage(
-        config,
-        sendContext,
-        image,
-        detectedMime,
-        `xiaoqi-${input.runId}-image`,
-      );
-      sendDuration.observe(Number(process.hrtime.bigint() - sendStarted) / 1e9);
-      sendTotal.inc({ result: "sent" });
-      await db
-        .update(outboundMessages)
-        .set({ status: "sent", wxMessageId, sentAt: new Date() })
-        .where(eq(outboundMessages.id, outbound.id));
-      await recordOutbound(db, {
-        accountId: run.accountId,
-        userId: source.userId,
-        conversationKey: source.conversationKey,
-        senderId: sendContext.account.ilinkBotId,
-        wxMessageId,
-        text: "[图片]",
+        filename: path.basename(input.filename),
+        data: image,
+        recordText: "[图片]",
         itemType: "image",
-      });
-      return { ok: true, wxMessageId, sentAt: new Date().toISOString(), deduplicated: false };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sendTotal.inc({ result: "failed" });
-      await db
-        .update(outboundMessages)
-        .set({ status: "failed", errorCode: "SEND_FAILED" })
-        .where(eq(outboundMessages.id, outbound.id));
-      req.log.error({ err, runId: input.runId }, "image send failed");
-      throw new AppError({ code: "SEND_FAILED", message, httpStatus: 502, retryable: true });
-    }
+        label: "image",
+        send: (ctx, data, _filename, mime, clientId) => sendImage(config, ctx, data, mime, clientId),
+      },
+      req.log,
+    );
   });
 
   app.post("/internal/v1/send-file", async (req, reply) => {
@@ -312,81 +358,22 @@ export async function buildServer(deps: ServerDeps) {
       throw new AppError({ code: "INVALID_FILE", message: "invalid file name", httpStatus: 400 });
     }
 
-    const { run, source } = await loadRunAndSource(input.runId, input.replyToMessageId);
-
-    await db
-      .insert(outboundMessages)
-      .values({
+    return sendMedia(
+      {
         runId: input.runId,
+        replyToMessageId: input.replyToMessageId,
         chunkIndex: FILE_CHUNK_INDEX,
         kind: "file",
-        storageKey: fileName,
         mime: input.mime,
-        sizeBytes: data.length,
-        status: "pending",
-      })
-      .onConflictDoNothing();
-
-    const outRows = await db
-      .select()
-      .from(outboundMessages)
-      .where(
-        and(
-          eq(outboundMessages.runId, input.runId),
-          eq(outboundMessages.chunkIndex, FILE_CHUNK_INDEX),
-        ),
-      )
-      .limit(1);
-    const outbound = outRows[0];
-    if (!outbound) throw new AppError({ code: "OUTBOUND_NOT_FOUND", message: "outbound row missing" });
-    if (outbound.status === "sent") {
-      sendTotal.inc({ result: "deduplicated" });
-      return { ok: true, wxMessageId: outbound.wxMessageId, sentAt: outbound.sentAt, deduplicated: true };
-    }
-
-    const sendContext = await loadSendContext(
-      db,
-      config,
-      run.accountId,
-      source.conversationKey,
-      source.senderId,
-    );
-
-    const sendStarted = process.hrtime.bigint();
-    try {
-      const { wxMessageId } = await sendFile(
-        config,
-        sendContext,
+        filename: fileName,
         data,
-        fileName,
-        `xiaoqi-${input.runId}-file`,
-      );
-      sendDuration.observe(Number(process.hrtime.bigint() - sendStarted) / 1e9);
-      sendTotal.inc({ result: "sent" });
-      await db
-        .update(outboundMessages)
-        .set({ status: "sent", wxMessageId, sentAt: new Date() })
-        .where(eq(outboundMessages.id, outbound.id));
-      await recordOutbound(db, {
-        accountId: run.accountId,
-        userId: source.userId,
-        conversationKey: source.conversationKey,
-        senderId: sendContext.account.ilinkBotId,
-        wxMessageId,
-        text: `[文件] ${fileName}`,
+        recordText: `[文件] ${fileName}`,
         itemType: "file",
-      });
-      return { ok: true, wxMessageId, sentAt: new Date().toISOString(), deduplicated: false };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      sendTotal.inc({ result: "failed" });
-      await db
-        .update(outboundMessages)
-        .set({ status: "failed", errorCode: "SEND_FAILED" })
-        .where(eq(outboundMessages.id, outbound.id));
-      req.log.error({ err, runId: input.runId }, "file send failed");
-      throw new AppError({ code: "SEND_FAILED", message, httpStatus: 502, retryable: true });
-    }
+        label: "file",
+        send: (ctx, data, filename, _mime, clientId) => sendFile(config, ctx, data, filename, clientId),
+      },
+      req.log,
+    );
   });
 
   app.post("/internal/v1/send-proactive", async (req, reply) => {
