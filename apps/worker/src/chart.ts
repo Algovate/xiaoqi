@@ -90,9 +90,9 @@ export const CHART_USAGE = `用法：
 const MAX_POINTS = 12;
 const MAX_TITLE_CHARS = 60;
 const MAX_LABEL_CHARS = 20;
-const WIDTH = 1000;
-const HEIGHT = 620;
-const MARGIN = { top: 100, right: 50, bottom: 100, left: 80 };
+const WIDTH = 900;
+const HEIGHT = 640;
+const MARGIN = { top: 96, right: 44, bottom: 96, left: 80 };
 const COLORS = ["#4f7cff", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"];
 
 export function parseChartCommand(raw: string): ParseChartResult {
@@ -168,8 +168,8 @@ export function buildChartSvg(spec: ChartSpec): string {
 <svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
   <rect width="${WIDTH}" height="${HEIGHT}" fill="#ffffff"/>
   <g font-family="PingFang SC, Heiti SC, Microsoft YaHei, Arial, sans-serif">
-    <text x="${MARGIN.left}" y="58" font-size="30" font-weight="600" fill="#111827">${title}</text>
-    <text x="${WIDTH - MARGIN.right}" y="${HEIGHT - 24}" text-anchor="end" font-size="14" fill="#9ca3af">小栖生成</text>
+    <text x="${MARGIN.left}" y="56" font-size="34" font-weight="600" fill="#111827">${title}</text>
+    <text x="${WIDTH - MARGIN.right}" y="${HEIGHT - 20}" text-anchor="end" font-size="14" fill="#9ca3af">小栖生成</text>
     ${body}
   </g>
 </svg>`;
@@ -234,12 +234,12 @@ function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number;
       `<line x1="${plot.x}" y1="${round(y)}" x2="${plot.x + plot.width}" y2="${round(y)}" stroke="#e5e7eb" stroke-width="1"/>`,
     );
     lines.push(
-      `<text x="${plot.x - 14}" y="${round(y + 5)}" text-anchor="end" font-size="15" fill="#6b7280">${formatNumber(value)}</text>`,
+      `<text x="${plot.x - 14}" y="${round(y + 6)}" text-anchor="end" font-size="18" fill="#6b7280">${formatNumber(value)}</text>`,
     );
   }
 
   if (spec.type === "bar") {
-    const barWidth = Math.min(step * 0.62, 92);
+    const barWidth = Math.min(step * 0.62, 110);
     spec.points.forEach((point, i) => {
       const cx = plot.x + step * (i + 0.5);
       const height = (point.value / max) * plot.height;
@@ -249,7 +249,7 @@ function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number;
         `<rect x="${round(x)}" y="${round(y)}" width="${round(barWidth)}" height="${round(Math.max(height, 1))}" rx="6" fill="${COLORS[i % COLORS.length]}"/>`,
       );
       lines.push(
-        `<text x="${round(cx)}" y="${round(y - 10)}" text-anchor="middle" font-size="17" font-weight="600" fill="#374151">${formatNumber(point.value)}</text>`,
+        `<text x="${round(cx)}" y="${round(y - 10)}" text-anchor="middle" font-size="20" font-weight="600" fill="#374151">${formatNumber(point.value)}</text>`,
       );
       lines.push(xLabel(cx, plot.y + plot.height + 34, point.label));
     });
@@ -265,7 +265,7 @@ function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number;
     for (const p of points) {
       lines.push(`<circle cx="${round(p.cx)}" cy="${round(p.cy)}" r="6" fill="#ffffff" stroke="${COLORS[0]}" stroke-width="3"/>`);
       lines.push(
-        `<text x="${round(p.cx)}" y="${round(p.cy - 14)}" text-anchor="middle" font-size="16" font-weight="600" fill="#374151">${formatNumber(p.point.value)}</text>`,
+        `<text x="${round(p.cx)}" y="${round(p.cy - 14)}" text-anchor="middle" font-size="19" font-weight="600" fill="#374151">${formatNumber(p.point.value)}</text>`,
       );
       lines.push(xLabel(p.cx, plot.y + plot.height + 34, p.point.label));
     }
@@ -279,9 +279,9 @@ function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number;
 
 function pieChart(spec: ChartSpec, plot: { x: number; y: number; width: number; height: number }): string {
   const total = spec.points.reduce((sum, p) => sum + p.value, 0);
-  const cx = plot.x + plot.width * 0.32;
+  const cx = plot.x + plot.width * 0.30;
   const cy = plot.y + plot.height / 2 + 10;
-  const radius = 185;
+  const radius = 190;
   let angle = -Math.PI / 2;
   const parts: string[] = [];
 
@@ -307,23 +307,23 @@ function pieChart(spec: ChartSpec, plot: { x: number; y: number; width: number; 
       const lx = cx + radius * 0.62 * Math.cos(mid);
       const ly = cy + radius * 0.62 * Math.sin(mid);
       parts.push(
-        `<text x="${round(lx)}" y="${round(ly + 6)}" text-anchor="middle" font-size="18" font-weight="600" fill="#ffffff">${formatPercent(point.value / total)}</text>`,
+        `<text x="${round(lx)}" y="${round(ly + 6)}" text-anchor="middle" font-size="20" font-weight="600" fill="#ffffff">${formatPercent(point.value / total)}</text>`,
       );
     }
     angle = end;
   });
 
-  const legendX = plot.x + plot.width * 0.64;
-  const legendTop = plot.y + 70;
+  const legendX = plot.x + plot.width * 0.62;
+  const legendTop = plot.y + 64;
   spec.points.forEach((point, i) => {
-    const y = legendTop + i * 42;
-    parts.push(`<rect x="${round(legendX)}" y="${y - 18}" width="18" height="18" rx="4" fill="${COLORS[i % COLORS.length]}"/>`);
+    const y = legendTop + i * 44;
+    parts.push(`<rect x="${round(legendX)}" y="${y - 20}" width="20" height="20" rx="4" fill="${COLORS[i % COLORS.length]}"/>`);
     const label = point.label.length > 10 ? `${point.label.slice(0, 9)}…` : point.label;
     parts.push(
-      `<text x="${round(legendX + 30)}" y="${y}" font-size="18" fill="#374151">${escapeXml(label)}</text>`,
+      `<text x="${round(legendX + 32)}" y="${y}" font-size="20" fill="#374151">${escapeXml(label)}</text>`,
     );
     parts.push(
-      `<text x="${round(plot.x + plot.width)}" y="${y}" text-anchor="end" font-size="17" fill="#6b7280">${formatNumber(point.value)} · ${formatPercent(point.value / total)}</text>`,
+      `<text x="${round(plot.x + plot.width)}" y="${y}" text-anchor="end" font-size="19" fill="#6b7280">${formatNumber(point.value)} · ${formatPercent(point.value / total)}</text>`,
     );
   });
 
@@ -332,7 +332,7 @@ function pieChart(spec: ChartSpec, plot: { x: number; y: number; width: number; 
 
 function xLabel(cx: number, y: number, label: string): string {
   const display = label.length > 12 ? `${label.slice(0, 11)}…` : label;
-  return `<text x="${round(cx)}" y="${round(y)}" text-anchor="middle" font-size="16" fill="#4b5563">${escapeXml(display)}</text>`;
+  return `<text x="${round(cx)}" y="${round(y)}" text-anchor="middle" font-size="19" fill="#4b5563">${escapeXml(display)}</text>`;
 }
 
 function niceMax(value: number): number {
