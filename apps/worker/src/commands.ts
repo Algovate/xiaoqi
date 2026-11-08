@@ -1,15 +1,22 @@
 import { and, desc, eq, gt } from "drizzle-orm";
-import type { AppConfig, Database, MessageRow, UserRow } from "@xiaoqi/core";
+import fsp from "node:fs/promises";
+import path from "node:path";
+import type { AppConfig, Database, Logger, MessageRow, UserRow } from "@xiaoqi/core";
 import { conversationState, messages, reminders } from "@xiaoqi/core";
 import { formatShanghai, parseReminder } from "./time.js";
 import { chat } from "./llm.js";
 import { handleTaskCommand } from "./task-commands.js";
 import { isWebSearchEnabled } from "./web-search.js";
+import { CHART_USAGE, parseChartCommand, renderChartPng } from "./chart.js";
 
 export interface Command {
   name: string;
   args: string;
   raw: string;
+}
+
+export interface CommandEffects {
+  media?: { path: string; mime: string; filename: string };
 }
 
 export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
@@ -18,6 +25,7 @@ export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
 可用命令：
 /summary  总结最近对话
 /search 今天上海天气     联网搜索并回答
+/chart bar 月销量 | 一月=120,二月=180  生成图表
 /remind 明天10点 交周报  设置提醒
 /codex xiaoqi 修复测试  启动 Codex 任务
 /dsh xiaoqi 分析仓库    启动 DSH 任务
@@ -42,10 +50,11 @@ export function parseCommand(text: string | null): Command | null {
 }
 
 export async function handleCommand(
-  deps: { db: Database; config: AppConfig },
+  deps: { db: Database; config: AppConfig; logger?: Logger },
   msg: MessageRow,
   user: UserRow | null,
   command: Command,
+  effects: CommandEffects = {},
 ): Promise<string> {
   switch (command.name) {
     case "help":
@@ -68,6 +77,8 @@ export async function handleCommand(
         return "联网搜索未开启：设置 WEB_SEARCH_ENABLED=true，确认 LLM_API_KEY 已配置后重启 worker。";
       }
       return "用法：/search <问题>\n例：/search 今天上海天气";
+    case "chart":
+      return chartCommand(deps, command.args, effects);
     case "codex":
       return handleTaskCommand(deps, msg, command, "codex");
     case "dsh":
@@ -88,6 +99,34 @@ export async function handleCommand(
     }
     default:
       return `不认识 /${command.name}。\n\n${HELP_TEXT}`;
+  }
+}
+
+async function chartCommand(
+  deps: { config: AppConfig; logger?: Logger },
+  args: string,
+  effects: CommandEffects,
+): Promise<string> {
+  if (!deps.config.MEDIA_OUTBOUND_ENABLED) {
+    return "发图能力未开启：设置 MEDIA_OUTBOUND_ENABLED=true 后重启 worker。";
+  }
+  if (!args.trim()) return CHART_USAGE;
+
+  const parsed = parseChartCommand(args);
+  if (!parsed.ok) return parsed.error;
+
+  try {
+    const outputDir = path.resolve(deps.config.MEDIA_DIR, "outbound");
+    const file = await renderChartPng(parsed.spec, outputDir);
+    if (file.size > deps.config.MEDIA_OUTBOUND_MAX_BYTES) {
+      await fsp.unlink(file.path).catch(() => undefined);
+      return `图表太大（${Math.round(file.size / 1024)}KB），减少数据点再试。`;
+    }
+    effects.media = { path: file.path, mime: file.mime, filename: path.basename(file.path) };
+    return `图表：${parsed.spec.title}`;
+  } catch (err) {
+    deps.logger?.warn({ err }, "chart render failed");
+    return `图表生成失败：${err instanceof Error ? err.message : String(err)}`;
   }
 }
 

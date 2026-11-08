@@ -2,12 +2,15 @@ import crypto from "node:crypto";
 import { parseJsonPreserveBigInts } from "./parse.js";
 import type {
   GetUpdatesResp,
+  GetUploadUrlInput,
+  GetUploadUrlResp,
   ILinkClientOptions,
   LoginQr,
   QrStatusResp,
+  SendImageInput,
   SendTextInput,
 } from "./types.js";
-import { MessageState, MessageType } from "./types.js";
+import { MessageState, MessageType, UploadMediaType } from "./types.js";
 
 export class ILinkError extends Error {
   constructor(
@@ -30,6 +33,7 @@ export class ILinkClient {
   private readonly clientVersion: string;
   private readonly timeoutMs: number;
   private readonly longPollTimeoutMs: number;
+  private readonly cdnBaseUrl: string;
   private readonly fetchImpl: typeof fetch;
 
   constructor(options: ILinkClientOptions) {
@@ -39,6 +43,7 @@ export class ILinkClient {
     this.clientVersion = options.clientVersion ?? "132106";
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.longPollTimeoutMs = options.longPollTimeoutMs ?? 35_000;
+    this.cdnBaseUrl = options.cdnBaseUrl ?? "https://novac2c.cdn.weixin.qq.com/c2c";
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
@@ -87,28 +92,94 @@ export class ILinkClient {
   }
 
   async sendText(input: SendTextInput): Promise<Record<string, unknown>> {
-    const clientId = input.clientId ?? `xiaoqi-${crypto.randomUUID()}`;
-    const resp = await this.request<Record<string, unknown>>("/ilink/bot/sendmessage", {
+    return this.sendMessage({
+      toUserId: input.toUserId,
+      contextToken: input.contextToken,
+      clientId: input.clientId ?? `xiaoqi-${crypto.randomUUID()}`,
+      itemList: [{ type: 1, text_item: { text: input.text } }],
+    });
+  }
+
+  async getUploadUrl(input: GetUploadUrlInput): Promise<GetUploadUrlResp> {
+    return this.request<GetUploadUrlResp>("/ilink/bot/getuploadurl", {
       method: "POST",
       body: {
-        msg: {
-          from_user_id: "",
-          to_user_id: input.toUserId,
-          client_id: clientId,
-          message_type: MessageType.BOT,
-          message_state: MessageState.FINISH,
-          context_token: input.contextToken,
-          item_list: [{ type: 1, text_item: { text: input.text } }],
-        },
+        filekey: input.filekey,
+        media_type: input.mediaType,
+        to_user_id: input.toUserId,
+        rawsize: input.rawSize,
+        rawfilemd5: input.rawFileMd5,
+        filesize: input.fileSize,
+        no_need_thumb: input.noNeedThumb ?? true,
+        aeskey: input.aesKeyHex,
+        context_token: input.contextToken,
+        base_info: this.baseInfo(),
       },
-      timeoutMs: 20_000,
-      label: "sendmessage",
+      timeoutMs: 15_000,
+      label: "getuploadurl",
     });
-    const ret = Number(resp.ret ?? 0);
-    if (ret !== 0) {
-      throw new ILinkError("sendmessage", ret, Number(resp.errcode ?? 0), String(resp.errmsg ?? ""), 200, false);
+  }
+
+  /**
+   * 图片出站：getuploadurl -> AES-128-ECB/PKCS#7 -> CDN POST -> sendmessage。
+   * CDN 上传成功时响应头 x-encrypted-param 是 sendmessage 需要的 media 参数。
+   */
+  async sendImage(input: SendImageInput): Promise<Record<string, unknown>> {
+    if (!/^image\/(png|jpeg|webp)$/i.test(input.mime)) {
+      throw new ILinkError("sendimage", 0, 0, `unsupported image mime: ${input.mime}`, 0, false);
     }
-    return resp;
+    if (input.data.length === 0) {
+      throw new ILinkError("sendimage", 0, 0, "empty image", 0, false);
+    }
+    if (input.data.length > 5 * 1024 * 1024) {
+      throw new ILinkError("sendimage", 0, 0, "image exceeds 5MB", 0, false);
+    }
+
+    const filekey = crypto.randomBytes(16).toString("hex");
+    const aesKey = crypto.randomBytes(16);
+    const rawSize = input.data.length;
+    const rawFileMd5 = crypto.createHash("md5").update(input.data).digest("hex");
+    const fileSize = aesPaddedSize(rawSize);
+    const upload = await this.getUploadUrl({
+      toUserId: input.toUserId,
+      contextToken: input.contextToken,
+      mediaType: UploadMediaType.IMAGE,
+      filekey,
+      rawSize,
+      rawFileMd5,
+      fileSize,
+      aesKeyHex: aesKey.toString("hex"),
+    });
+
+    const ciphertext = encryptAesEcb(input.data, aesKey);
+    const uploadUrl =
+      upload.upload_full_url ||
+      (upload.upload_param ? this.cdnUploadUrl(upload.upload_param, filekey) : "");
+    if (!uploadUrl) {
+      throw new ILinkError("getuploadurl", 0, 0, "no upload url returned", 200, false);
+    }
+
+    const encryptQueryParam = await this.uploadCiphertext(uploadUrl, ciphertext);
+    const aesKeyForApi = Buffer.from(aesKey.toString("hex"), "utf8").toString("base64");
+
+    return this.sendMessage({
+      toUserId: input.toUserId,
+      contextToken: input.contextToken,
+      clientId: input.clientId ?? `xiaoqi-${crypto.randomUUID()}`,
+      itemList: [
+        {
+          type: 2,
+          image_item: {
+            media: {
+              encrypt_query_param: encryptQueryParam,
+              aes_key: aesKeyForApi,
+              encrypt_type: 1,
+            },
+            mid_size: ciphertext.length,
+          },
+        },
+      ],
+    });
   }
 
   async getConfig(ilinkUserId: string, contextToken: string): Promise<{ typing_ticket?: string }> {
@@ -150,6 +221,86 @@ export class ILinkClient {
       timeoutMs: 5_000,
       label: "notifystop",
     });
+  }
+
+  private async sendMessage(input: {
+    toUserId: string;
+    contextToken: string;
+    clientId: string;
+    itemList: Array<Record<string, unknown>>;
+  }): Promise<Record<string, unknown>> {
+    const resp = await this.request<Record<string, unknown>>("/ilink/bot/sendmessage", {
+      method: "POST",
+      body: {
+        msg: {
+          from_user_id: "",
+          to_user_id: input.toUserId,
+          client_id: input.clientId,
+          message_type: MessageType.BOT,
+          message_state: MessageState.FINISH,
+          context_token: input.contextToken,
+          item_list: input.itemList,
+        },
+      },
+      timeoutMs: 20_000,
+      label: "sendmessage",
+    });
+    const ret = Number(resp.ret ?? 0);
+    if (ret !== 0) {
+      throw new ILinkError("sendmessage", ret, Number(resp.errcode ?? 0), String(resp.errmsg ?? ""), 200, false);
+    }
+    return resp;
+  }
+
+  private cdnUploadUrl(uploadParam: string, filekey: string): string {
+    const base = this.cdnBaseUrl.replace(/\/+$/, "");
+    return `${base}/upload?encrypted_query_param=${encodeURIComponent(uploadParam)}&filekey=${encodeURIComponent(filekey)}`;
+  }
+
+  private async uploadCiphertext(uploadUrl: string, ciphertext: Buffer): Promise<string> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const res = await this.fetchImpl(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: ciphertext,
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new ILinkError(
+          "cdn-upload",
+          0,
+          0,
+          `CDN upload HTTP ${res.status}: ${snippet(text)}`,
+          res.status,
+          res.status >= 500 || res.status === 429,
+        );
+      }
+      const encryptedParam = res.headers.get("x-encrypted-param");
+      if (!encryptedParam) {
+        const text = await res.text();
+        throw new ILinkError(
+          "cdn-upload",
+          0,
+          0,
+          `CDN upload missing x-encrypted-param: ${snippet(text)}`,
+          res.status,
+          false,
+        );
+      }
+      await res.arrayBuffer().catch(() => undefined);
+      return encryptedParam;
+    } catch (err) {
+      if (err instanceof ILinkError) throw err;
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new ILinkError("cdn-upload", 0, 0, "CDN upload timeout (60000ms)", 0, true);
+      }
+      throw new ILinkError("cdn-upload", 0, 0, err instanceof Error ? err.message : String(err), 0, true);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private baseInfo(): Record<string, string> {
@@ -227,6 +378,15 @@ function normalizeBase(input: string): string {
 
 function randomUin(): string {
   return Buffer.from(String(crypto.randomBytes(4).readUInt32LE(0)), "utf8").toString("base64");
+}
+
+function aesPaddedSize(size: number): number {
+  return Math.ceil((size + 1) / 16) * 16;
+}
+
+function encryptAesEcb(plaintext: Buffer, key: Buffer): Buffer {
+  const cipher = crypto.createCipheriv("aes-128-ecb", key, null);
+  return Buffer.concat([cipher.update(plaintext), cipher.final()]);
 }
 
 function snippet(text: string): string {

@@ -137,6 +137,10 @@ export const outboundMessages = pgTable(
       .notNull()
       .references(() => runs.id, { onDelete: "cascade" }),
     chunkIndex: integer("chunk_index").notNull(),
+    kind: text("kind").notNull().default("text"),
+    storageKey: text("storage_key"),
+    mime: text("mime"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
     wxMessageId: text("wx_message_id"),
     status: text("status").notNull().default("pending"),
     errorCode: text("error_code"),

@@ -13,6 +13,7 @@ const EnvSchema = z.object({
   ILINK_BASE_URL: z.string().min(1).default("https://ilinkai.weixin.qq.com"),
   ILINK_APP_ID: z.string().min(1).default("bot"),
   ILINK_APP_VERSION: z.string().min(1).default("132106"),
+  ILINK_CDN_BASE: z.string().min(1).default("https://novac2c.cdn.weixin.qq.com/c2c"),
 
   LLM_BASE_URL: z.string().min(1).default("https://api.deepseek.com/v1"),
   LLM_API_KEY: z.string().default(""),
@@ -43,6 +44,8 @@ const EnvSchema = z.object({
 
   WELCOME_MESSAGE: z.string().default(""),
   MEDIA_DIR: z.string().min(1).default("./data/media"),
+  MEDIA_OUTBOUND_ENABLED: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  MEDIA_OUTBOUND_MAX_BYTES: z.coerce.number().int().positive().default(5_000_000),
   OCR_ENABLED: z.enum(["auto", "true", "false"]).default("auto"),
   OCR_BIN: z.string().default(""),
 });

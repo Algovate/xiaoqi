@@ -2,7 +2,7 @@
 
 > 更新：2026-11-06
 >
-> 状态：v1 已实现 M1–M5c + 联网搜索；本文是**当前系统**的单一入口。
+> 状态：v1 已实现 M1–M5c + 联网搜索 + 数据图表/图片出站；本文是**当前系统**的单一入口。
 >
 > 历史设计：[DM v0.1](./archive/design-dm-v0.1.md)、[群助手设计](./archive/group-design.md)。
 >
@@ -15,11 +15,11 @@
 小栖是**微信私聊 AI 助理**：
 
 - 用户在微信里直接和小栖对话，不需要建群、不需要 @；
-- 能问答、看图片/PDF、总结对话、记提醒、查本地知识库；
+- 能问答、看图片/PDF、总结对话、记提醒、查本地知识库、生成数据图表；
 - 能通过 `/codex`、`/dsh` 把编码任务交给外部 runner；
 - 单运营方、小范围用户，不做公开 SaaS。
 
-**不做**：微信群、外部客户群、逆向协议、多租户计费、语音回复、文件出站。
+**不做**：微信群、外部客户群、逆向协议、多租户计费、语音回复、通用文件出站；图片/图表出站已支持。
 
 ---
 
@@ -67,6 +67,7 @@ getupdates
   → 命令 / 附件 / 知识库 / 按需联网 / 上下文 / LLM
   → 清洗 + 900 字分段（最多 3 条）
   → gateway sendmessage
+  → /chart 时：渲染 PNG → gateway send-image → CDN 上传 → sendmessage(image)
   → 出站写入 messages(direction=out)
   → run 记录 tokens/耗时/状态
 ```
@@ -110,6 +111,14 @@ getupdates
 - 只读搜索结果的 `summary`/摘要，不抓取任意 URL；工具结果按不可信数据处理。
 - 搜索失败或无结果时明确说明，不编造；最终回答缺少 URL 时自动补来源列表。
 
+### 3.7 数据图表 / 图片出站
+
+- `/chart bar|line|pie 标题 | 标签=数值,...` 由 worker 解析并生成 SVG，再用 macOS `sips` 转 PNG。
+- 图片通过 gateway `/internal/v1/send-image`（内部 base64）发送，不经过任意文件路径。
+- gateway 调 iLink `getuploadurl` → AES-128-ECB/PKCS#7 加密 → CDN POST → `sendmessage` 的 `image_item`。
+- 依赖最近入站消息的 `context_token`；发送失败回退文本提示，不阻塞原命令。
+- 仅支持柱状/折线/饼图；AI 生图/自由绘画不在范围内。
+
 ---
 
 ## 4. 当前能力
@@ -126,6 +135,7 @@ getupdates
 | `/remind` + 定时发送 | ✅ |
 | 知识库关键词检索 + `kb:ingest` | ✅ |
 | 联网搜索（DeepSeek Search，模型按需调用） | ✅ |
+| 数据图表 + 图片出站（`/chart`，iLink CDN） | ✅ |
 | Admin 仪表盘 + 每日 token 预算 | ✅ |
 | Prometheus `/metrics` + 预算 Webhook | ✅ |
 | Codex / DSH runner + resume + diff | ✅ |
@@ -142,6 +152,7 @@ getupdates
 | `/reset` | 清空当前对话上下文（设置 reset_at） |
 | `/summary` | 总结最近对话并写摘要 |
 | `/search <问题>` | 强制联网搜索并回答（带来源） |
+| `/chart <类型> <标题> \| 标签=数值,...` | 生成柱状/折线/饼图并发送图片 |
 | `/remind <时间> <内容>` | 定时提醒 |
 | `/codex <repo> <任务>` | 启动 Codex |
 | `/codex resume <id> <指令>` | 继续 Codex session |
@@ -161,7 +172,7 @@ getupdates
 | `users` | 私聊用户 |
 | `messages` | 入站/出站消息，`conversation_key=dm:<wxid>` |
 | `context_tokens` | 加密的 context_token |
-| `runs` / `outbound_messages` | 回答运行与分段 |
+| `runs` / `outbound_messages` | 回答运行、文本/图片发送与幂等 |
 | `outbox` | 事务 outbox |
 | `media_assets` | 解密后的媒体与抽取文本 |
 | `conversation_state` | 摘要 / reset_at |
@@ -169,7 +180,7 @@ getupdates
 | `kb_documents` / `kb_chunks` | 知识库（关键词 tokens） |
 | `codex_tasks` / `codex_task_events` | Codex/DSH 任务与事件 |
 
-迁移在 `packages/core/migrations/`，从 `0001_init.sql` 到 `0007_welcome.sql`。
+迁移在 `packages/core/migrations/`，从 `0001_init.sql` 到 `0008_outbound_media.sql`。
 
 ---
 
@@ -191,6 +202,9 @@ WEB_SEARCH_ENABLED=true
 WEB_SEARCH_AUTO=true
 WEB_SEARCH_MAX_RESULTS=5
 WEB_SEARCH_TIMEOUT_MS=15000
+ILINK_CDN_BASE=https://novac2c.cdn.weixin.qq.com/c2c
+MEDIA_OUTBOUND_ENABLED=true
+MEDIA_OUTBOUND_MAX_BYTES=5000000
 MAX_DAILY_TOKENS=100000
 ALERT_WEBHOOK_URL=
 CODEX_BIN=codex
@@ -213,6 +227,7 @@ OCR_ENABLED=auto
 - 日志默认不记录消息正文；token 加密存储。
 - 知识库当前全局、关键词检索；不含用户隔离/embedding。
 - 联网搜索只把模型生成的 query 发给 DeepSeek Search，不抓取任意 URL；结果按不可信数据处理。
+- 图片出站只接受内部 base64、校验 PNG/JPEG/WebP 魔数与 5MB 上限；不读取任意文件路径。
 
 ---
 
@@ -221,6 +236,8 @@ OCR_ENABLED=auto
 - 单账号、单 runner；无多租户。
 - 知识库不是语义检索，同义改写可能搜不到。
 - 联网搜索最多 2 次、3 次模型调用，只读摘要不读网页正文；复杂研究问题可能不够。
+- 图表只支持柱状/折线/饼图，PNG 渲染依赖 macOS `sips`；不做 AI 生图/自由绘画。
+- 图片出站依赖非官方 iLink `getuploadurl` 协议和最近 `context_token`；主动推送图片可能失败。
 - 附件文本只在当前轮使用，未做持久附件 RAG。
 - DSH 只有 `headless`，无 session/resume。
 - 无 RBAC/TOTP、无逐行 diff review、无语音回复。

@@ -55,6 +55,10 @@ x-admin-token: <ADMIN_TOKEN>
 | `WEB_SEARCH_AUTO` |  | 默认 `true`；模型可自动搜索；`false` 仅 `/search` |
 | `WEB_SEARCH_MAX_RESULTS` |  | 默认 5，最多 10 |
 | `WEB_SEARCH_TIMEOUT_MS` |  | 默认 15000 |
+| `ILINK_CDN_BASE` |  | 图片上传 CDN，默认 `https://novac2c.cdn.weixin.qq.com/c2c` |
+| `MEDIA_DIR` |  | 媒体目录，默认 `./data/media` |
+| `MEDIA_OUTBOUND_ENABLED` |  | 默认 `true`；图片/图表出站开关 |
+| `MEDIA_OUTBOUND_MAX_BYTES` |  | 默认 5000000 |
 | `MAX_DAILY_TOKENS` |  | 默认 100000 |
 | `ALERT_WEBHOOK_URL` |  | 企业微信 Webhook |
 | `OCR_ENABLED` |  | `auto/true/false` |
@@ -83,6 +87,7 @@ openssl rand -hex 24      # INTERNAL_TOKEN / ADMIN_TOKEN
 /reset
 /summary
 /search 今天上海天气
+/chart bar 月销量 | 一月=120,二月=180
 /remind 明天10点 交周报
 /codex list
 /codex xiaoqi 修复失败测试
@@ -109,6 +114,21 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 3. 时效问题由模型按需搜索，也可以 `/search <问题>` 强制搜索。
 
 只关自动搜索：`WEB_SEARCH_AUTO=false`；完全关闭：`WEB_SEARCH_ENABLED=false`。搜索按成功请求计费，复用 DeepSeek 账户余额；不抓取网页正文。
+
+### 数据图表 / 图片出站
+
+`/chart` 生成 PNG 并通过 iLink CDN 发送：
+
+```text
+/chart bar 月销量 | 一月=120,二月=180,三月=150
+/chart line 温度趋势 | 周一=12,周二=14
+/chart pie 流量占比 | 搜索=60,直接=25,其他=15
+```
+
+- PNG 渲染使用 macOS 自带 `sips`；Linux 上会失败并回退文本提示。
+- `MEDIA_OUTBOUND_ENABLED=false` 可完全关闭；单图上限 `MEDIA_OUTBOUND_MAX_BYTES`。
+- 依赖最近一次入站消息的 `context_token`；主动推送图片可能失败。
+- 只支持柱状/折线/饼图；AI 生图不在范围内。
 
 ---
 
@@ -171,6 +191,8 @@ pnpm ocr:build
 | 联网搜索不触发 | 确认 `WEB_SEARCH_ENABLED`/`WEB_SEARCH_AUTO`；直接发 `/search <问题>`；看 `xiaoqi_web_search_total` |
 | 搜索报 401/402 | 检查 `LLM_API_KEY` 与 DeepSeek 账户余额；Search 复用同一个 key |
 | 搜索报 400 / 模型不调用工具 | 确认 `LLM_MODEL` 支持 Tool Calls；可改用 `deepseek-flash` 或 `deepseek-v4-pro` |
+| 图表发送失败 | 确认 `MEDIA_OUTBOUND_ENABLED=true`、`sips` 可用；看 worker/gateway 日志和 `xiaoqi_send_total` |
+| 图片显示灰色/无法打开 | 检查 `aes_key` 是否为 base64(hex 字符串)、CDN 响应是否有 `x-encrypted-param` |
 | 预算告警不发送 | 检查 `ALERT_WEBHOOK_URL`，以及是否已达到 50/80/100% |
 | Admin 401 | `ADMIN_TOKEN` 是否与 `.env` 一致；api 是否重启 |
 

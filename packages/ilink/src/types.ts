@@ -1,6 +1,7 @@
 export const MessageType = { USER: 1, BOT: 2 } as const;
 export const MessageState = { FINISH: 2 } as const;
 export const ItemType = { TEXT: 1, IMAGE: 2, VOICE: 3, FILE: 4, VIDEO: 5 } as const;
+export const UploadMediaType = { IMAGE: 1, VIDEO: 2, FILE: 3, VOICE: 4 } as const;
 
 export interface CDNMedia {
   encrypt_query_param?: string;
@@ -21,7 +22,13 @@ export interface MessageItem {
     svr_id?: string;
   };
   text_item?: { text?: string };
-  image_item?: { media?: CDNMedia; aeskey?: string; full_url?: string };
+  image_item?: {
+    media?: CDNMedia;
+    thumb_media?: CDNMedia;
+    aeskey?: string;
+    full_url?: string;
+    mid_size?: number;
+  };
   voice_item?: { media?: CDNMedia; text?: string; encode_type?: number };
   file_item?: { media?: CDNMedia; file_name?: string; len?: string };
   video_item?: { media?: CDNMedia };
@@ -91,6 +98,7 @@ export interface ILinkClientOptions {
   clientVersion?: string;
   timeoutMs?: number;
   longPollTimeoutMs?: number;
+  cdnBaseUrl?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -98,5 +106,32 @@ export interface SendTextInput {
   toUserId: string;
   contextToken: string;
   text: string;
+  clientId?: string;
+}
+
+export interface GetUploadUrlInput {
+  toUserId: string;
+  contextToken: string;
+  mediaType: number;
+  filekey: string;
+  rawSize: number;
+  rawFileMd5: string;
+  fileSize: number;
+  aesKeyHex: string;
+  noNeedThumb?: boolean;
+}
+
+export interface GetUploadUrlResp {
+  upload_param?: string;
+  upload_full_url?: string;
+  thumb_upload_param?: string;
+  thumb_upload_full_url?: string;
+}
+
+export interface SendImageInput {
+  toUserId: string;
+  contextToken: string;
+  data: Buffer;
+  mime: string;
   clientId?: string;
 }

@@ -1,11 +1,17 @@
 import crypto from "node:crypto";
+import fsp from "node:fs/promises";
 import type { Job } from "bullmq";
 import { eq } from "drizzle-orm";
 import type { Pool } from "pg";
 import type { AppConfig, Database, Logger, MessageRow } from "@xiaoqi/core";
 import { agentDuration, budgetExceeded, llmTokens, messages, runs, runsTotal, users } from "@xiaoqi/core";
 import { generateAnswer } from "./answer.js";
-import { getSearchQuery, handleCommand, parseCommand } from "./commands.js";
+import {
+  getSearchQuery,
+  handleCommand,
+  parseCommand,
+  type CommandEffects,
+} from "./commands.js";
 import { welcomeText } from "./welcome.js";
 import { chunkReply } from "./format.js";
 import { dailyTokensUsed } from "./budget.js";
@@ -66,6 +72,35 @@ export function createDmHandler(deps: DmHandlerDeps) {
     return chunks.length;
   }
 
+  async function sendImage(
+    runId: string,
+    msg: MessageRow,
+    media: { path: string; mime: string; filename: string },
+  ): Promise<void> {
+    const data = await fsp.readFile(media.path);
+    if (data.length > config.MEDIA_OUTBOUND_MAX_BYTES) {
+      throw new Error(`image too large: ${data.length} bytes`);
+    }
+    const resp = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/send-image`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-xiaoqi-internal": config.internalToken,
+      },
+      body: JSON.stringify({
+        runId,
+        replyToMessageId: String(msg.id),
+        mime: media.mime,
+        filename: media.filename,
+        dataBase64: data.toString("base64"),
+      }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`gateway image send failed http=${resp.status} ${body.slice(0, 300)}`);
+    }
+  }
+
   return async function handle(job: Job<DmJob>): Promise<void> {
     const { accountId, messageId } = job.data;
     const rows = await db
@@ -102,7 +137,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
           triggerMessageId: msg.id,
           status: "running",
           model: config.LLM_MODEL,
-          promptVersion: "dm@2026-11-08.1",
+          promptVersion: "dm@2026-11-08.2",
           traceId: crypto.randomUUID(),
         })
         .onConflictDoNothing()
@@ -125,7 +160,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
       .set({
         status: "running",
         model: config.LLM_MODEL,
-        promptVersion: "dm@2026-11-08.1",
+        promptVersion: "dm@2026-11-08.2",
         errorCode: null,
       })
       .where(eq(runs.id, run.id));
@@ -134,7 +169,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
     const searchQuery = getSearchQuery(command);
     const forceSearch = searchQuery !== null;
 
-    if (msg.userId && !(command && ["help", "whoami", "reset", "remind"].includes(command.name))) {
+    if (msg.userId && !(command && ["help", "whoami", "reset", "remind", "chart"].includes(command.name))) {
       try {
         const used = await dailyTokensUsed(pool, msg.userId);
         await maybeAlertBudget(config, logger, {
@@ -168,14 +203,26 @@ export function createDmHandler(deps: DmHandlerDeps) {
     if (command && !forceSearch) {
       let reply: string;
       let commandError: string | null = null;
+      const effects: CommandEffects = {};
       try {
-        reply = welcomePrefix + (await handleCommand({ db, config }, msg, user, command));
+        reply = welcomePrefix + (await handleCommand({ db, config, logger }, msg, user, command, effects));
       } catch (err) {
         commandError = "COMMAND_FAILED";
         reply = "这个命令没处理好，稍后再试。";
         logger.error({ err, runId: run.id, command: command.name }, "command failed");
       }
       try {
+        if (effects.media) {
+          const media = effects.media;
+          try {
+            await sendImage(run.id, msg, media);
+            await fsp.unlink(media.path).catch(() => undefined);
+          } catch (err) {
+            commandError = "IMAGE_SEND_FAILED";
+            reply += "\n\n（图片发送失败，稍后再试）";
+            logger.warn({ err, runId: run.id }, "image send failed");
+          }
+        }
         const chunks = await sendChunks(run.id, msg, reply);
         await db
           .update(runs)
@@ -183,7 +230,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
             status: commandError ? "failed" : "sent",
             errorCode: commandError,
             model: "command",
-            promptVersion: "commands@2026-11-08.1",
+            promptVersion: "commands@2026-11-08.2",
             latencyMs: Date.now() - startedAt,
             finishedAt: new Date(),
           })

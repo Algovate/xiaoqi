@@ -65,11 +65,36 @@ export async function sendText(
     token: ctx.botToken,
     appId: config.ILINK_APP_ID,
     clientVersion: config.ILINK_APP_VERSION,
+    cdnBaseUrl: config.ILINK_CDN_BASE,
   });
   const resp = await client.sendText({
     toUserId: ctx.target,
     contextToken: ctx.contextToken,
     text,
+    clientId,
+  });
+  return { wxMessageId: wxMessageIdOf(resp) };
+}
+
+export async function sendImage(
+  config: AppConfig,
+  ctx: SendContext,
+  data: Buffer,
+  mime: string,
+  clientId: string,
+): Promise<{ wxMessageId: string }> {
+  const client = new ILinkClient({
+    baseUrl: ctx.account.baseUrl,
+    token: ctx.botToken,
+    appId: config.ILINK_APP_ID,
+    clientVersion: config.ILINK_APP_VERSION,
+    cdnBaseUrl: config.ILINK_CDN_BASE,
+  });
+  const resp = await client.sendImage({
+    toUserId: ctx.target,
+    contextToken: ctx.contextToken,
+    data,
+    mime,
     clientId,
   });
   return { wxMessageId: wxMessageIdOf(resp) };
@@ -84,6 +109,7 @@ export async function recordOutbound(
     senderId: string;
     wxMessageId: string;
     text: string;
+    itemType?: string;
   },
 ): Promise<void> {
   if (!input.wxMessageId) return;
@@ -97,7 +123,7 @@ export async function recordOutbound(
       senderId: input.senderId,
       direction: "out",
       messageType: 2,
-      itemType: "text",
+      itemType: input.itemType ?? "text",
       text: input.text,
       createdAt: new Date(),
     })
