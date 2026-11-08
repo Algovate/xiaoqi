@@ -2,6 +2,7 @@ import {
   chat,
   type ChatMessage,
   type ChatResult,
+  type ChatToolCall,
   type LlmConfig,
   type ToolChoice,
   type ToolDefinition,
@@ -64,14 +65,20 @@ export async function chatWithTools(
     completionTokens += result.completionTokens;
     lastModel = result.model;
 
-    if (!isLast && result.toolCalls.length > 0) {
+    const textCalls =
+      !isLast && result.toolCalls.length === 0 && result.content
+        ? parseTextToolCalls(result.content)
+        : [];
+    const calls = result.toolCalls.length > 0 ? result.toolCalls : textCalls;
+
+    if (!isLast && calls.length > 0) {
       transcript.push({
         role: "assistant",
-        content: result.content || null,
-        tool_calls: result.toolCalls,
+        content: textCalls.length > 0 ? null : result.content || null,
+        tool_calls: calls,
       });
 
-      for (const call of result.toolCalls) {
+      for (const call of calls) {
         if (toolCallCount >= maxToolCalls) {
           transcript.push({
             role: "tool",
@@ -114,6 +121,26 @@ export async function chatWithTools(
   }
 
   throw new Error("LLM 工具循环未产生回答");
+}
+
+const DSML_INVOKE =
+  /<[｜|]{1,2}DSML[｜|]{1,2}\s*invoke\s+name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/[｜|]{1,2}DSML[｜|]{1,2}\s*invoke>/gi;
+const DSML_ARGUMENTS =
+  /<[｜|]{1,2}DSML[｜|]{1,2}\s*parameter\s+name=["']arguments["'][^>]*>([\s\S]*?)<\/[｜|]{1,2}DSML[｜|]{1,2}\s*parameter>/i;
+
+export function parseTextToolCalls(content: string): ChatToolCall[] {
+  const calls: ChatToolCall[] = [];
+  for (const match of content.matchAll(DSML_INVOKE)) {
+    const name = match[1]!;
+    const argMatch = match[2]!.match(DSML_ARGUMENTS);
+    if (!argMatch) continue;
+    calls.push({
+      id: `dsml-${calls.length}`,
+      type: "function",
+      function: { name, arguments: argMatch[1]!.trim() },
+    });
+  }
+  return calls;
 }
 
 function parseToolArguments(raw: string): Record<string, unknown> {

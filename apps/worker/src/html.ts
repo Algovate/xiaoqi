@@ -36,10 +36,10 @@ export function buildHtmlDocument(raw: string, title = "小栖交互页"): strin
     doc = `<!doctype html>\n${doc}`;
   }
 
-  doc = doc.replace(
-    /<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]*>/gi,
-    "",
-  );
+  doc = doc
+    .replace(/<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]*>/gi, "")
+    .replace(/<meta[^>]+charset=[^>]*>/gi, "")
+    .replace(/<meta[^>]+name=["']viewport["'][^>]*>/gi, "");
 
   const head = [
     `<meta charset="utf-8">`,

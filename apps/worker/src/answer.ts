@@ -217,9 +217,11 @@ export async function generateAnswer(
               },
               {
                 firstToolChoice: forceSearch ? WEB_SEARCH_TOOL_CHOICE : "auto",
+                // HTML/代码工具参数可能很长，1200 默认值会把工具调用截断。
+                maxTokens: 6_000,
               },
             )
-          : await chat(config, messages);
+          : await chat(config, messages, { maxTokens: 6_000 });
     } catch (err) {
       if (tools.length === 0 || forceSearch) throw err;
       logger.warn({ err, runId }, "tool loop failed; retrying without tools");

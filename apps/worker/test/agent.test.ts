@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chatWithTools } from "../src/agent.js";
+import { chatWithTools, parseTextToolCalls } from "../src/agent.js";
 import type { ToolDefinition } from "../src/llm.js";
 
 const config = {
@@ -42,6 +42,23 @@ function llmResponse(
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("parseTextToolCalls", () => {
+  it("parses DeepSeek DSML tool calls embedded in content", () => {
+    const content = `<｜｜DSML｜｜ calls>
+<｜｜DSML｜｜ invoke name="render_html">
+<｜｜DSML｜｜ parameter name="arguments" string="true">{"title":"BMI","html":"<h1>BMI</h1>"}</｜｜DSML｜｜ parameter>
+</｜｜DSML｜｜ invoke>
+</｜｜DSML｜｜ calls>`;
+    expect(parseTextToolCalls(content)).toEqual([
+      {
+        id: "dsml-0",
+        type: "function",
+        function: { name: "render_html", arguments: '{"title":"BMI","html":"<h1>BMI</h1>"}' },
+      },
+    ]);
+  });
 });
 
 describe("chatWithTools", () => {
