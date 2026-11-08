@@ -84,7 +84,8 @@ getupdates
 - 网关只落原始消息；worker 在回答前下载 CDN、AES-128-ECB 解密。
 - 图片：DeepSeek Flash 视觉描述；失败回退 macOS Apple Vision OCR。
 - PDF/DOCX/TXT/MD：`unpdf` / `mammoth` / 直接读取。
-- 提取文本只注入**当前轮**；持久知识库走 `knowledge/`。
+- 文本类附件按魔数 + 扩展名识别（`.md`/`.txt`/`.csv`/`.json`/`.log`/`.tsv`）。
+- 提取文本注入**当前轮**；最近 10 分钟附件会补入追问上下文；持久知识库走 `knowledge/`。
 
 ### 3.4 提醒
 
@@ -269,7 +270,7 @@ OCR_ENABLED=auto
 - 图表只支持柱状/折线/饼图，PNG 渲染依赖 macOS `sips`；不做 AI 生图/自由绘画。
 - Mermaid 依赖外部 mermaid.ink，复杂主题/样式不可控；服务不可用时回退文本。
 - 图片出站依赖非官方 iLink `getuploadurl` 协议和最近 `context_token`；主动推送图片可能失败。
-- 附件文本只在当前轮使用，未做持久附件 RAG。
+- 附件文本当前轮 + 最近 10 分钟追问可用，未做持久附件 RAG。
 - DSH 只有 `headless`，无 session/resume。
 - 无 RBAC/TOTP、无逐行 diff review、无语音回复。
 - 群聊方案已归档，等官方群能力再评估。

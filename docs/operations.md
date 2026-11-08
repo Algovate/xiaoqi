@@ -230,6 +230,7 @@ pnpm ocr:build
 | Codex `EPERM` | runner 移到普通终端，不要在 DSH sandbox 里跑 |
 | OCR 没结果 | 确认 `pnpm ocr:build`、`OCR_ENABLED=auto` |
 | 知识库搜不到 | 运行 `pnpm kb:ingest`；当前是关键词检索，不是语义检索 |
+| 发 .md/.txt 提示暂不支持 | 确认是 UTF-8 文本；重新发送一次，worker 会按扩展名解析 |
 | 联网搜索不触发 | 确认 `WEB_SEARCH_ENABLED`/`WEB_SEARCH_AUTO`；直接发 `/search <问题>`；看 `xiaoqi_web_search_total` |
 | 搜索报 401/402 | 检查 `LLM_API_KEY` 与 DeepSeek 账户余额；Search 复用同一个 key |
 | 搜索报 400 / 模型不调用工具 | 确认 `LLM_MODEL` 支持 Tool Calls；可改用 `deepseek-flash` 或 `deepseek-v4-pro` |

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { csvPreview } from "../src/media.js";
+import { csvPreview, resolveFileExtension } from "../src/media.js";
+
+describe("resolveFileExtension", () => {
+  it("infers text formats from the file name when magic is unknown", () => {
+    expect(resolveFileExtension("bin", "CURRENT-STATUS.md")).toBe("md");
+    expect(resolveFileExtension("bin", "notes.txt")).toBe("txt");
+    expect(resolveFileExtension("bin", "data.csv")).toBe("csv");
+    expect(resolveFileExtension("bin", "archive.bin")).toBe("bin");
+  });
+});
 
 describe("csvPreview", () => {
   it("strips BOM and caps rows", () => {

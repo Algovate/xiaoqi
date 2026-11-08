@@ -1,14 +1,16 @@
 import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gt } from "drizzle-orm";
 import type { AppConfig, Database, MessageRow } from "@xiaoqi/core";
-import { mediaAssets } from "@xiaoqi/core";
+import { mediaAssets, messages } from "@xiaoqi/core";
 import { describeImage } from "./llm.js";
 import { ocrFile } from "./ocr.js";
 
 const MAX_BYTES = 20 * 1024 * 1024;
-const MAX_TEXT = 20_000;
+const MAX_TEXT = 40_000;
+const MAX_CONTEXT_TEXT = 20_000;
+const TEXT_FILE_EXTS = new Set(["txt", "md", "csv", "tsv", "json", "log"]);
 
 interface RawItem {
   type?: number;
@@ -87,8 +89,7 @@ async function ingestOne(
   if (plain.length > MAX_BYTES) return `[附件超过 20MB，已跳过]`;
 
   const rawFileName = payload.file_item?.file_name ?? "";
-  let ext = detectExtension(plain);
-  if (ext === "bin" && rawFileName.toLowerCase().endsWith(".csv")) ext = "csv";
+  const ext = resolveFileExtension(detectExtension(plain), rawFileName);
   const fileName = rawFileName || `attachment-${index}.${ext}`;
   const storageKey = path.join("media", msg.accountId, `${msg.id}-${index}.${ext}`);
   const fullPath = path.join(config.MEDIA_DIR, msg.accountId, `${msg.id}-${index}.${ext}`);
@@ -116,6 +117,8 @@ async function ingestOne(
       text = csvPreview(plain.toString("utf8"));
       mime = "text/csv";
     } else if (ext === "txt" || ext === "md" || mime.startsWith("text/")) {
+      text = plain.toString("utf8").trim();
+    } else if (ext === "json" || ext === "log" || ext === "tsv") {
       text = plain.toString("utf8").trim();
     } else if (kind === "image") {
       let visionText = "";
@@ -154,7 +157,46 @@ async function ingestOne(
   if (kind === "image") {
     return `[图片] ${text}`;
   }
-  return `[文件：${fileName}]\n${text.slice(0, 12_000)}`;
+  const clipped = text.length > MAX_CONTEXT_TEXT ? `${text.slice(0, MAX_CONTEXT_TEXT)}\n[内容较长，已截断]` : text;
+  return `[文件：${fileName}]\n${clipped}`;
+}
+
+export function resolveFileExtension(detected: string, fileName: string): string {
+  if (detected !== "bin") return detected;
+  const ext = path.extname(fileName).toLowerCase().replace(/^\./, "");
+  return TEXT_FILE_EXTS.has(ext) ? ext : detected;
+}
+
+export async function recentAttachmentText(
+  db: Database,
+  conversationKey: string,
+  maxAgeMs = 10 * 60_000,
+): Promise<string> {
+  const cutoff = new Date(Date.now() - maxAgeMs);
+  const rows = await db
+    .select({
+      label: messages.text,
+      text: mediaAssets.extractedText,
+      createdAt: mediaAssets.createdAt,
+    })
+    .from(mediaAssets)
+    .innerJoin(messages, eq(mediaAssets.messageId, messages.id))
+    .where(
+      and(
+        eq(messages.conversationKey, conversationKey),
+        eq(messages.direction, "in"),
+        eq(mediaAssets.status, "ready"),
+        gt(mediaAssets.createdAt, cutoff),
+      ),
+    )
+    .orderBy(desc(mediaAssets.createdAt))
+    .limit(2);
+
+  return rows
+    .reverse()
+    .map((row) => `[最近附件 ${row.label ?? ""}]\n${row.text ?? ""}`)
+    .join("\n\n")
+    .slice(0, 12_000);
 }
 
 export function csvPreview(text: string): string {

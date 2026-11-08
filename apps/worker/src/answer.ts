@@ -5,7 +5,7 @@ import type { AppConfig, Database, Logger, MessageRow, UserRow } from "@xiaoqi/c
 import { buildContext } from "./context.js";
 import { searchKnowledge } from "./kb.js";
 import { chat, type ChatMessage, type ChatResult, type ToolDefinition } from "./llm.js";
-import { extractAttachments } from "./media.js";
+import { extractAttachments, recentAttachmentText } from "./media.js";
 import { sanitizeReply } from "./format.js";
 import { chatWithTools } from "./agent.js";
 import { chartSpecFromTool, RENDER_CHART_TOOL } from "./chart.js";
@@ -57,7 +57,14 @@ export async function generateAnswer(
   }
 
   try {
-    const attachmentText = await extractAttachments(db, config, msg);
+    let attachmentText = await extractAttachments(db, config, msg);
+    if (!attachmentText) {
+      const recent = await recentAttachmentText(db, msg.conversationKey).catch((err) => {
+        logger.warn({ err, runId }, "recent attachment lookup failed");
+        return "";
+      });
+      if (recent) attachmentText = `[最近消息的附件内容]\n${recent}`;
+    }
     const currentQuestion =
       opts.query?.trim() || msg.text?.trim() || (attachmentText ? "请分析我发的附件" : "（非文本消息）");
 
