@@ -15,7 +15,7 @@ import {
   metricsContentType,
   metricsText,
 } from "@xiaoqi/core";
-import { loadSendContext, recordOutbound, sendImage, sendText } from "./outbound.js";
+import { loadSendContext, recordOutbound, sendFile, sendImage, sendText } from "./outbound.js";
 import { createTypingService } from "./typing.js";
 
 const SendSchema = z.object({
@@ -33,7 +33,16 @@ const SendImageSchema = z.object({
   dataBase64: z.string().min(1).max(7_000_000),
 });
 
+const SendFileSchema = z.object({
+  runId: z.string().uuid(),
+  replyToMessageId: z.string().regex(/^\d+$/),
+  fileName: z.string().min(1).max(120),
+  mime: z.string().min(1).max(120),
+  dataBase64: z.string().min(1).max(7_000_000),
+});
+
 const IMAGE_CHUNK_INDEX = 100;
+const FILE_CHUNK_INDEX = 101;
 
 const TypingSchema = z.object({
   replyToMessageId: z.string().regex(/^\d+$/),
@@ -271,6 +280,111 @@ export async function buildServer(deps: ServerDeps) {
         .set({ status: "failed", errorCode: "SEND_FAILED" })
         .where(eq(outboundMessages.id, outbound.id));
       req.log.error({ err, runId: input.runId }, "image send failed");
+      throw new AppError({ code: "SEND_FAILED", message, httpStatus: 502, retryable: true });
+    }
+  });
+
+  app.post("/internal/v1/send-file", async (req, reply) => {
+    const parsed = SendFileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: { code: "VALIDATION_ERROR", message: parsed.error.issues.map((i) => i.message).join("; ") },
+      });
+    }
+    const input = parsed.data;
+    if (!config.MEDIA_OUTBOUND_ENABLED) {
+      throw new AppError({
+        code: "MEDIA_OUTBOUND_DISABLED",
+        message: "media outbound disabled",
+        httpStatus: 403,
+      });
+    }
+
+    const data = Buffer.from(input.dataBase64, "base64");
+    if (data.length === 0) {
+      throw new AppError({ code: "INVALID_FILE", message: "empty file", httpStatus: 400 });
+    }
+    if (data.length > config.MEDIA_OUTBOUND_MAX_BYTES) {
+      throw new AppError({ code: "FILE_TOO_LARGE", message: "file too large", httpStatus: 413 });
+    }
+    const fileName = path.basename(input.fileName);
+    if (!fileName || fileName === "." || fileName === "..") {
+      throw new AppError({ code: "INVALID_FILE", message: "invalid file name", httpStatus: 400 });
+    }
+
+    const { run, source } = await loadRunAndSource(input.runId, input.replyToMessageId);
+
+    await db
+      .insert(outboundMessages)
+      .values({
+        runId: input.runId,
+        chunkIndex: FILE_CHUNK_INDEX,
+        kind: "file",
+        storageKey: fileName,
+        mime: input.mime,
+        sizeBytes: data.length,
+        status: "pending",
+      })
+      .onConflictDoNothing();
+
+    const outRows = await db
+      .select()
+      .from(outboundMessages)
+      .where(
+        and(
+          eq(outboundMessages.runId, input.runId),
+          eq(outboundMessages.chunkIndex, FILE_CHUNK_INDEX),
+        ),
+      )
+      .limit(1);
+    const outbound = outRows[0];
+    if (!outbound) throw new AppError({ code: "OUTBOUND_NOT_FOUND", message: "outbound row missing" });
+    if (outbound.status === "sent") {
+      sendTotal.inc({ result: "deduplicated" });
+      return { ok: true, wxMessageId: outbound.wxMessageId, sentAt: outbound.sentAt, deduplicated: true };
+    }
+
+    const sendContext = await loadSendContext(
+      db,
+      config,
+      run.accountId,
+      source.conversationKey,
+      source.senderId,
+    );
+
+    const sendStarted = process.hrtime.bigint();
+    try {
+      const { wxMessageId } = await sendFile(
+        config,
+        sendContext,
+        data,
+        fileName,
+        `xiaoqi-${input.runId}-file`,
+      );
+      sendDuration.observe(Number(process.hrtime.bigint() - sendStarted) / 1e9);
+      sendTotal.inc({ result: "sent" });
+      await db
+        .update(outboundMessages)
+        .set({ status: "sent", wxMessageId, sentAt: new Date() })
+        .where(eq(outboundMessages.id, outbound.id));
+      await recordOutbound(db, {
+        accountId: run.accountId,
+        userId: source.userId,
+        conversationKey: source.conversationKey,
+        senderId: sendContext.account.ilinkBotId,
+        wxMessageId,
+        text: `[文件] ${fileName}`,
+        itemType: "file",
+      });
+      return { ok: true, wxMessageId, sentAt: new Date().toISOString(), deduplicated: false };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendTotal.inc({ result: "failed" });
+      await db
+        .update(outboundMessages)
+        .set({ status: "failed", errorCode: "SEND_FAILED" })
+        .where(eq(outboundMessages.id, outbound.id));
+      req.log.error({ err, runId: input.runId }, "file send failed");
       throw new AppError({ code: "SEND_FAILED", message, httpStatus: 502, retryable: true });
     }
   });

@@ -86,8 +86,10 @@ async function ingestOne(
   const plain = Buffer.concat([decipher.update(cipher), decipher.final()]);
   if (plain.length > MAX_BYTES) return `[附件超过 20MB，已跳过]`;
 
-  const ext = detectExtension(plain);
-  const fileName = payload.file_item?.file_name ?? `attachment-${index}.${ext}`;
+  const rawFileName = payload.file_item?.file_name ?? "";
+  let ext = detectExtension(plain);
+  if (ext === "bin" && rawFileName.toLowerCase().endsWith(".csv")) ext = "csv";
+  const fileName = rawFileName || `attachment-${index}.${ext}`;
   const storageKey = path.join("media", msg.accountId, `${msg.id}-${index}.${ext}`);
   const fullPath = path.join(config.MEDIA_DIR, msg.accountId, `${msg.id}-${index}.${ext}`);
   await fsp.mkdir(path.dirname(fullPath), { recursive: true });
@@ -110,6 +112,9 @@ async function ingestOne(
       const result = await mammoth.extractRawText({ buffer: plain });
       text = result.value.trim();
       mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    } else if (ext === "csv") {
+      text = csvPreview(plain.toString("utf8"));
+      mime = "text/csv";
     } else if (ext === "txt" || ext === "md" || mime.startsWith("text/")) {
       text = plain.toString("utf8").trim();
     } else if (kind === "image") {
@@ -152,6 +157,15 @@ async function ingestOne(
   return `[文件：${fileName}]\n${text.slice(0, 12_000)}`;
 }
 
+export function csvPreview(text: string): string {
+  return text
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .slice(0, 200)
+    .join("\n")
+    .trim();
+}
+
 function mediaUrl(media: CDN | undefined): string {
   if (!media) return "";
   if (media.full_url) return media.full_url;
@@ -177,6 +191,7 @@ function mimeOf(ext: string): string {
     case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     case "txt": return "text/plain";
     case "md": return "text/markdown";
+    case "csv": return "text/csv";
     default: return "application/octet-stream";
   }
 }

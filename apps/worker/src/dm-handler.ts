@@ -13,7 +13,7 @@ import {
   type CommandEffects,
 } from "./commands.js";
 import { welcomeText } from "./welcome.js";
-import { sendImage, sendTextChunks } from "./send.js";
+import { sendFile, sendImage, sendTextChunks } from "./send.js";
 import { dailyTokensUsed } from "./budget.js";
 import { maybeAlertBudget } from "./alerts.js";
 
@@ -118,7 +118,10 @@ export function createDmHandler(deps: DmHandlerDeps) {
 
     if (
       msg.userId &&
-      !(command && ["help", "whoami", "reset", "remind", "chart", "mermaid"].includes(command.name))
+      !(
+        command &&
+        ["help", "whoami", "reset", "remind", "chart", "mermaid", "export"].includes(command.name)
+      )
     ) {
       try {
         const used = await dailyTokensUsed(pool, msg.userId);
@@ -171,6 +174,17 @@ export function createDmHandler(deps: DmHandlerDeps) {
             commandError = "IMAGE_SEND_FAILED";
             reply += "\n\n（图片发送失败，稍后再试）";
             logger.warn({ err, runId: run.id }, "image send failed");
+          }
+        }
+        if (effects.file) {
+          const file = effects.file;
+          try {
+            await sendFile(config, run.id, msg, file);
+            await fsp.unlink(file.path).catch(() => undefined);
+          } catch (err) {
+            commandError = "FILE_SEND_FAILED";
+            reply += "\n\n（文件发送失败，稍后再试）";
+            logger.warn({ err, runId: run.id }, "file send failed");
           }
         }
         const chunks = await sendTextChunks(config, run.id, msg, reply);

@@ -66,9 +66,10 @@ export async function renderChartPng(
 }
 
 function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number; height: number }): string {
-  const max = niceMax(
-    Math.max(...spec.series.flatMap((series) => series.values), 0),
-  );
+  const values = spec.stacked
+    ? spec.labels.map((_, i) => spec.series.reduce((sum, series) => sum + (series.values[i] ?? 0), 0))
+    : spec.series.flatMap((series) => series.values);
+  const max = niceMax(Math.max(...values, 0));
   const ticks = 4;
   const step = plot.width / spec.labels.length;
   const lines: string[] = [];
@@ -88,7 +89,40 @@ function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number;
 
   const labelFont = spec.labels.length > 8 ? 16 : 19;
 
-  if (spec.type === "bar") {
+  if (spec.type === "bar" && spec.stacked) {
+    const barWidth = Math.min(step * 0.62, 100);
+
+    spec.labels.forEach((label, i) => {
+      const center = plot.x + step * (i + 0.5);
+      const total = spec.series.reduce((sum, series) => sum + (series.values[i] ?? 0), 0);
+      let bottom = 0;
+
+      spec.series.forEach((series, j) => {
+        const value = series.values[i]!;
+        const height = (value / max) * plot.height;
+        const y = plot.y + plot.height - ((bottom + value) / max) * plot.height;
+        if (height > 0.5) {
+          lines.push(
+            `<rect x="${round(center - barWidth / 2)}" y="${round(y)}" width="${round(barWidth)}" height="${round(Math.max(height, 1))}" fill="${COLORS[j % COLORS.length]}" stroke="#ffffff" stroke-width="1"/>`,
+          );
+        }
+        if (height >= 18 && barWidth >= 28 && spec.series.length > 1) {
+          lines.push(
+            `<text x="${round(center)}" y="${round(y + height / 2 + 5)}" text-anchor="middle" font-size="14" font-weight="600" fill="#ffffff">${formatNumber(value)}</text>`,
+          );
+        }
+        bottom += value;
+      });
+
+      if (total > 0 && barWidth >= 28) {
+        const top = plot.y + plot.height - (total / max) * plot.height;
+        lines.push(
+          `<text x="${round(center)}" y="${round(top - 8)}" text-anchor="middle" font-size="16" font-weight="600" fill="#374151">${formatNumber(total)}</text>`,
+        );
+      }
+      lines.push(xLabel(center, plot.y + plot.height + 34, label, labelFont));
+    });
+  } else if (spec.type === "bar") {
     const barWidth =
       spec.series.length === 1
         ? Math.min(step * 0.62, 100)

@@ -86,7 +86,7 @@ describe("handleCommand /mermaid", () => {
         { name: "mermaid", args: "graph LR\n A-->B", raw: "" },
         {},
       );
-      expect(text).toContain("发图能力未开启");
+      expect(text).toContain("媒体发送未开启");
     } finally {
       await fsp.rm(dir, { recursive: true, force: true });
     }

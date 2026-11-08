@@ -135,3 +135,11 @@ export interface SendImageInput {
   mime: string;
   clientId?: string;
 }
+
+export interface SendFileInput {
+  toUserId: string;
+  contextToken: string;
+  data: Buffer;
+  fileName: string;
+  clientId?: string;
+}

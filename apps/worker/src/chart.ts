@@ -12,6 +12,7 @@ export interface ChartSpec {
   title: string;
   labels: string[];
   series: ChartSeries[];
+  stacked?: boolean;
 }
 
 function normalizeType(raw: string): ChartType | null {
@@ -65,6 +66,10 @@ export const RENDER_CHART_TOOL: ToolDefinition = {
             additionalProperties: false,
           },
         },
+        stacked: {
+          type: "boolean",
+          description: "仅柱状图：是否把系列堆叠显示",
+        },
       },
       required: ["type", "title", "labels", "series"],
       additionalProperties: false,
@@ -112,7 +117,10 @@ export function chartSpecFromTool(args: Record<string, unknown>): ChartSpec | nu
     if (series[0]!.values.reduce((sum, value) => sum + value, 0) <= 0) return null;
   }
 
-  return { type, title, labels, series };
+  const stacked = args.stacked === true;
+  if (stacked && type !== "bar") return null;
+
+  return { type, title, labels, series, ...(stacked ? { stacked: true } : {}) };
 }
 
 export type ParseChartResult =
@@ -122,6 +130,7 @@ export type ParseChartResult =
 export const CHART_USAGE = `用法：
 /chart bar 月销量 | 一月=120,二月=180,三月=150
 /chart bar 销量/成本 | 一月=12/8,二月=18/10 | 销量/成本
+/chart stacked bar 总量 | 一月=12/8,二月=18/10 | 销量/成本
 /chart line 温度趋势 | 周一=12,周二=14
 /chart pie 流量占比 | 搜索=60,直接=25,其他=15`;
 
@@ -135,14 +144,20 @@ export function parseChartCommand(raw: string): ParseChartResult {
 
   const segments = input.split("|").map((s) => s.trim());
   if (segments.length > 3) return { ok: false, error: CHART_USAGE };
-  const head = segments[0]!;
-  const headMatch = head.match(/^(\S+)(?:\s+([\s\S]*))?$/);
-  if (!headMatch) return { ok: false, error: CHART_USAGE };
+  const headParts = segments[0]!.split(/\s+/).filter(Boolean);
+  let stacked = false;
+  if (headParts[0] === "stacked" || headParts[0] === "堆叠") {
+    stacked = true;
+    headParts.shift();
+  }
+  const typeRaw = headParts.shift() ?? "";
+  const type = normalizeType(typeRaw);
+  if (!type) return { ok: false, error: `不支持的图表类型：${typeRaw}\n\n${CHART_USAGE}` };
+  if (stacked && type !== "bar") {
+    return { ok: false, error: "堆叠只支持柱状图" };
+  }
 
-  const type = normalizeType(headMatch[1]!);
-  if (!type) return { ok: false, error: `不支持的图表类型：${headMatch[1]}\n\n${CHART_USAGE}` };
-
-  const rest = (headMatch[2] ?? "").trim().replace(/\s+/g, " ");
+  const rest = headParts.join(" ").trim().replace(/\s+/g, " ");
   const title = segments.length > 1 ? rest : "";
   const dataPart = segments.length > 1 ? (segments[1] ?? "") : rest;
   const seriesPart = segments[2] ?? "";
@@ -218,6 +233,12 @@ export function parseChartCommand(raw: string): ParseChartResult {
 
   return {
     ok: true,
-    spec: { type, title: title || "数据图表", labels, series },
+    spec: {
+      type,
+      title: title || "数据图表",
+      labels,
+      series,
+      ...(stacked ? { stacked: true } : {}),
+    },
   };
 }

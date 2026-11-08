@@ -111,6 +111,44 @@ describe("ILinkClient.sendImage", () => {
     expect(fetchMock.mock.calls[1]![0]).toBe("https://cdn.example.com/direct");
   });
 
+  it("sends a file item with the same encrypted upload flow", async () => {
+    const data = Buffer.from("a,b\n1,2\n");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ upload_param: "FILE_PARAM" }))
+      .mockResolvedValueOnce(
+        new Response(null, { status: 200, headers: { "x-encrypted-param": "FILE_ENC" } }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ message_id: "wx-file" }));
+
+    const client = makeClient(fetchMock);
+    const resp = await client.sendFile({
+      toUserId: "wxid-user",
+      contextToken: "ctx-token",
+      data,
+      fileName: "export.csv",
+      clientId: "file-1",
+    });
+
+    expect(resp.message_id).toBe("wx-file");
+    const uploadBody = JSON.parse(fetchMock.mock.calls[0]![1].body as string);
+    expect(uploadBody.media_type).toBe(3);
+
+    const sendBody = JSON.parse(fetchMock.mock.calls[2]![1].body as string);
+    expect(sendBody.msg.item_list[0]).toMatchObject({
+      type: 4,
+      file_item: {
+        file_name: "export.csv",
+        len: String(data.length),
+        media: {
+          encrypt_query_param: "FILE_ENC",
+          aes_key: Buffer.from(uploadBody.aeskey, "utf8").toString("base64"),
+          encrypt_type: 1,
+        },
+      },
+    });
+  });
+
   it("rejects unsupported mime types", async () => {
     const client = makeClient(vi.fn());
     await expect(

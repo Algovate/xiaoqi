@@ -7,6 +7,7 @@ import type {
   ILinkClientOptions,
   LoginQr,
   QrStatusResp,
+  SendFileInput,
   SendImageInput,
   SendTextInput,
 } from "./types.js";
@@ -128,39 +129,14 @@ export class ILinkClient {
     if (!/^image\/(png|jpeg|webp)$/i.test(input.mime)) {
       throw new ILinkError("sendimage", 0, 0, `unsupported image mime: ${input.mime}`, 0, false);
     }
-    if (input.data.length === 0) {
-      throw new ILinkError("sendimage", 0, 0, "empty image", 0, false);
-    }
-    if (input.data.length > 5 * 1024 * 1024) {
-      throw new ILinkError("sendimage", 0, 0, "image exceeds 5MB", 0, false);
-    }
+    this.assertMediaSize("sendimage", input.data);
 
-    const filekey = crypto.randomBytes(16).toString("hex");
-    const aesKey = crypto.randomBytes(16);
-    const rawSize = input.data.length;
-    const rawFileMd5 = crypto.createHash("md5").update(input.data).digest("hex");
-    const fileSize = aesPaddedSize(rawSize);
-    const upload = await this.getUploadUrl({
-      toUserId: input.toUserId,
-      contextToken: input.contextToken,
-      mediaType: UploadMediaType.IMAGE,
-      filekey,
-      rawSize,
-      rawFileMd5,
-      fileSize,
-      aesKeyHex: aesKey.toString("hex"),
-    });
-
-    const ciphertext = encryptAesEcb(input.data, aesKey);
-    const uploadUrl =
-      upload.upload_full_url ||
-      (upload.upload_param ? this.cdnUploadUrl(upload.upload_param, filekey) : "");
-    if (!uploadUrl) {
-      throw new ILinkError("getuploadurl", 0, 0, "no upload url returned", 200, false);
-    }
-
-    const encryptQueryParam = await this.uploadCiphertext(uploadUrl, ciphertext);
-    const aesKeyForApi = Buffer.from(aesKey.toString("hex"), "utf8").toString("base64");
+    const uploaded = await this.uploadMedia(
+      input.data,
+      input.toUserId,
+      input.contextToken,
+      UploadMediaType.IMAGE,
+    );
 
     return this.sendMessage({
       toUserId: input.toUserId,
@@ -171,11 +147,44 @@ export class ILinkClient {
           type: 2,
           image_item: {
             media: {
-              encrypt_query_param: encryptQueryParam,
-              aes_key: aesKeyForApi,
+              encrypt_query_param: uploaded.encryptQueryParam,
+              aes_key: uploaded.aesKeyForApi,
               encrypt_type: 1,
             },
-            mid_size: ciphertext.length,
+            mid_size: uploaded.ciphertextSize,
+          },
+        },
+      ],
+    });
+  }
+
+  async sendFile(input: SendFileInput): Promise<Record<string, unknown>> {
+    const fileName = input.fileName.trim();
+    if (!fileName) throw new ILinkError("sendfile", 0, 0, "empty file name", 0, false);
+    this.assertMediaSize("sendfile", input.data);
+
+    const uploaded = await this.uploadMedia(
+      input.data,
+      input.toUserId,
+      input.contextToken,
+      UploadMediaType.FILE,
+    );
+
+    return this.sendMessage({
+      toUserId: input.toUserId,
+      contextToken: input.contextToken,
+      clientId: input.clientId ?? `xiaoqi-${crypto.randomUUID()}`,
+      itemList: [
+        {
+          type: 4,
+          file_item: {
+            media: {
+              encrypt_query_param: uploaded.encryptQueryParam,
+              aes_key: uploaded.aesKeyForApi,
+              encrypt_type: 1,
+            },
+            file_name: fileName,
+            len: String(input.data.length),
           },
         },
       ],
@@ -221,6 +230,51 @@ export class ILinkClient {
       timeoutMs: 5_000,
       label: "notifystop",
     });
+  }
+
+  private assertMediaSize(op: string, data: Buffer): void {
+    if (data.length === 0) throw new ILinkError(op, 0, 0, "empty media", 0, false);
+    if (data.length > 5 * 1024 * 1024) {
+      throw new ILinkError(op, 0, 0, "media exceeds 5MB", 0, false);
+    }
+  }
+
+  private async uploadMedia(
+    data: Buffer,
+    toUserId: string,
+    contextToken: string,
+    mediaType: number,
+  ): Promise<{ encryptQueryParam: string; aesKeyForApi: string; ciphertextSize: number }> {
+    const filekey = crypto.randomBytes(16).toString("hex");
+    const aesKey = crypto.randomBytes(16);
+    const rawSize = data.length;
+    const rawFileMd5 = crypto.createHash("md5").update(data).digest("hex");
+    const fileSize = aesPaddedSize(rawSize);
+    const upload = await this.getUploadUrl({
+      toUserId,
+      contextToken,
+      mediaType,
+      filekey,
+      rawSize,
+      rawFileMd5,
+      fileSize,
+      aesKeyHex: aesKey.toString("hex"),
+    });
+
+    const ciphertext = encryptAesEcb(data, aesKey);
+    const uploadUrl =
+      upload.upload_full_url ||
+      (upload.upload_param ? this.cdnUploadUrl(upload.upload_param, filekey) : "");
+    if (!uploadUrl) {
+      throw new ILinkError("getuploadurl", 0, 0, "no upload url returned", 200, false);
+    }
+
+    const encryptQueryParam = await this.uploadCiphertext(uploadUrl, ciphertext);
+    return {
+      encryptQueryParam,
+      aesKeyForApi: Buffer.from(aesKey.toString("hex"), "utf8").toString("base64"),
+      ciphertextSize: ciphertext.length,
+    };
   }
 
   private async sendMessage(input: {

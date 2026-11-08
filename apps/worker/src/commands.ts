@@ -10,6 +10,7 @@ import { isWebSearchEnabled } from "./web-search.js";
 import { CHART_USAGE, parseChartCommand } from "./chart.js";
 import { renderChartPng } from "./chart-render.js";
 import { MERMAID_USAGE, renderMermaidPng } from "./mermaid.js";
+import { toCsv } from "./csv.js";
 
 export interface Command {
   name: string;
@@ -19,6 +20,7 @@ export interface Command {
 
 export interface CommandEffects {
   media?: { path: string; mime: string; filename: string };
+  file?: { path: string; mime: string; filename: string };
 }
 
 export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
@@ -29,6 +31,7 @@ export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
 /search 今天上海天气     联网搜索并回答
 /chart bar 月销量 | 一月=120,二月=180  生成图表
 /mermaid graph TD; A[用户]-->B[小栖]  画架构/流程图
+/export csv  导出最近对话
 /remind 明天10点 交周报  设置提醒
 /codex xiaoqi 修复测试  启动 Codex 任务
 /dsh xiaoqi 分析仓库    启动 DSH 任务
@@ -84,6 +87,8 @@ export async function handleCommand(
       return chartCommand(deps, command.args, effects);
     case "mermaid":
       return mermaidCommand(deps, command.args, effects);
+    case "export":
+      return exportCommand(deps, msg, command.args, effects);
     case "codex":
       return handleTaskCommand(deps, msg, command, "codex");
     case "dsh":
@@ -107,7 +112,7 @@ export async function handleCommand(
   }
 }
 
-const MEDIA_OUTBOUND_DISABLED = "发图能力未开启：设置 MEDIA_OUTBOUND_ENABLED=true 后重启 worker。";
+const MEDIA_OUTBOUND_DISABLED = "媒体发送未开启：设置 MEDIA_OUTBOUND_ENABLED=true 后重启 worker。";
 
 function setMediaEffect(
   effects: CommandEffects,
@@ -165,6 +170,49 @@ async function mermaidCommand(
   } catch (err) {
     deps.logger?.warn({ err }, "mermaid render failed");
     return `Mermaid 渲染失败：${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+async function exportCommand(
+  deps: { db: Database; config: AppConfig; logger?: Logger },
+  msg: MessageRow,
+  args: string,
+  effects: CommandEffects,
+): Promise<string> {
+  if (!deps.config.MEDIA_OUTBOUND_ENABLED) return MEDIA_OUTBOUND_DISABLED;
+  if (args.trim().toLowerCase() !== "csv") return "用法：/export csv\n导出当前对话最近 500 条消息。";
+
+  const rows = await deps.db
+    .select({
+      createdAt: messages.createdAt,
+      direction: messages.direction,
+      itemType: messages.itemType,
+      text: messages.text,
+    })
+    .from(messages)
+    .where(eq(messages.conversationKey, msg.conversationKey))
+    .orderBy(desc(messages.createdAt))
+    .limit(500);
+
+  if (rows.length === 0) return "没有可导出的消息。";
+
+  const csv = `\uFEFF${toCsv(rows.reverse())}`;
+  const size = Buffer.byteLength(csv);
+  if (size > deps.config.MEDIA_OUTBOUND_MAX_BYTES) {
+    return `导出内容太大（${Math.round(size / 1024)}KB），减少消息再试。`;
+  }
+
+  try {
+    const outputDir = path.resolve(deps.config.MEDIA_DIR, "outbound");
+    await fsp.mkdir(outputDir, { recursive: true });
+    const filename = `xiaoqi-export-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
+    const filePath = path.join(outputDir, filename);
+    await fsp.writeFile(filePath, csv, { mode: 0o600 });
+    effects.file = { path: filePath, mime: "text/csv", filename };
+    return `已导出最近 ${rows.length} 条消息为 CSV。`;
+  } catch (err) {
+    deps.logger?.warn({ err }, "csv export failed");
+    return `导出失败：${err instanceof Error ? err.message : String(err)}`;
   }
 }
 

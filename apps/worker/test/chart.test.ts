@@ -51,6 +51,15 @@ describe("parseChartCommand", () => {
     expect(parseChartCommand("pie 一月=12/8,二月=18/10 | 销量/成本").ok).toBe(false);
   });
 
+  it("parses stacked bars and rejects stacked lines", () => {
+    const result = parseChartCommand("stacked bar 总量 | 一月=12/8,二月=18/10 | 销量/成本");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.spec.stacked).toBe(true);
+    expect(result.spec.series).toHaveLength(2);
+    expect(parseChartCommand("stacked line 总量 | 一月=12/8 | A/B").ok).toBe(false);
+  });
+
   it("rejects negative, malformed, and empty data", () => {
     expect(parseChartCommand("bar 一月=-1").ok).toBe(false);
     expect(parseChartCommand("bar 一月").ok).toBe(false);
@@ -74,6 +83,30 @@ describe("chartSpecFromTool", () => {
       labels: ["一月", "二月"],
       series: [{ name: "销量", values: [12, 18] }],
     });
+  });
+
+  it("accepts stacked bars but not stacked lines", () => {
+    expect(
+      chartSpecFromTool({
+        type: "bar",
+        title: "总量",
+        labels: ["一月"],
+        series: [
+          { name: "销量", values: [12] },
+          { name: "成本", values: [8] },
+        ],
+        stacked: true,
+      }),
+    ).toMatchObject({ stacked: true });
+    expect(
+      chartSpecFromTool({
+        type: "line",
+        title: "趋势",
+        labels: ["一月"],
+        series: [{ name: "销量", values: [12] }],
+        stacked: true,
+      }),
+    ).toBeNull();
   });
 
   it("rejects invalid tool data", () => {
@@ -134,6 +167,22 @@ describe("buildChartSvg", () => {
     expect(svg).toContain("销量");
     expect(svg).toContain("成本");
     expect(svg.match(/<rect /g)?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("stacks bar segments with white separators", () => {
+    const svg = buildChartSvg({
+      type: "bar",
+      title: "总量",
+      labels: ["一月", "二月"],
+      series: [
+        { name: "销量", values: [12, 18] },
+        { name: "成本", values: [8, 10] },
+      ],
+      stacked: true,
+    });
+    expect(svg).toContain('stroke="#ffffff"');
+    expect(svg).toContain("销量");
+    expect(svg).toContain("成本");
   });
 });
 

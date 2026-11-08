@@ -88,6 +88,24 @@ export async function sendImage(
   return { wxMessageId: wxMessageIdOf(resp) };
 }
 
+export async function sendFile(
+  config: AppConfig,
+  ctx: SendContext,
+  data: Buffer,
+  fileName: string,
+  clientId: string,
+): Promise<{ wxMessageId: string }> {
+  const client = createClient(config, ctx);
+  const resp = await client.sendFile({
+    toUserId: ctx.target,
+    contextToken: ctx.contextToken,
+    data,
+    fileName,
+    clientId,
+  });
+  return { wxMessageId: wxMessageIdOf(resp) };
+}
+
 export async function recordOutbound(
   db: Database,
   input: {

@@ -57,7 +57,7 @@ x-admin-token: <ADMIN_TOKEN>
 | `WEB_SEARCH_TIMEOUT_MS` |  | 默认 15000 |
 | `ILINK_CDN_BASE` |  | 图片上传 CDN，默认 `https://novac2c.cdn.weixin.qq.com/c2c` |
 | `MEDIA_DIR` |  | 媒体目录，默认 `./data/media` |
-| `MEDIA_OUTBOUND_ENABLED` |  | 默认 `true`；图片/图表出站开关 |
+| `MEDIA_OUTBOUND_ENABLED` |  | 默认 `true`；图片/图表/文件出站开关 |
 | `MEDIA_OUTBOUND_MAX_BYTES` |  | 默认 5000000 |
 | `MERMAID_ENABLED` |  | 默认 `true`；Mermaid 渲染开关 |
 | `MERMAID_RENDER_BASE_URL` |  | 默认 `https://mermaid.ink` |
@@ -125,8 +125,10 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 ```text
 /chart bar 月销量 | 一月=120,二月=180,三月=150
 /chart bar 销量/成本 | 一月=12/8,二月=18/10 | 销量/成本
+/chart stacked bar 总量 | 一月=12/8,二月=18/10 | 销量/成本
 /chart line 温度趋势 | 周一=12,周二=14
 /mermaid graph LR A[用户]-->B[网关]-->C[Worker]
+/export csv
 /chart pie 流量占比 | 搜索=60,直接=25,其他=15
 ```
 
@@ -135,6 +137,8 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 - `MEDIA_OUTBOUND_ENABLED=false` 可完全关闭；单图上限 `MEDIA_OUTBOUND_MAX_BYTES`。
 - 依赖最近一次入站消息的 `context_token`；主动推送图片可能失败。
 - 只支持柱状/折线/饼图；AI 生图不在范围内。
+- 支持 `/chart stacked bar ...` 堆叠柱。
+- 发送 CSV 附件后可直接说“按某列画柱状图”；只预览前 200 行，按 UTF-8 解析。
 
 ### Mermaid 架构图
 
@@ -154,6 +158,19 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 - 渲染走 `mermaid.ink`，源码会发送给该外部服务；敏感架构图请设 `MERMAID_ENABLED=false`。
 - 默认 `type=png`、白底、宽 600；返回图片走现有 iLink 图片出站。
 - 服务不可用/超时/返回非图片时回退文本提示。
+
+### 文件出站 / CSV 导出
+
+`/export csv` 导出当前对话最近 500 条消息并发送文件：
+
+```text
+/export csv
+```
+
+- 文件走 iLink `sendFile`（`file_item`），复用 `getuploadurl` 和 AES/CDN 流程。
+- CSV 使用 UTF-8 BOM，Excel 打开中文不乱码。
+- 文件上限 `MEDIA_OUTBOUND_MAX_BYTES`；文件名取 basename，不接受任意路径。
+- 发送失败回退文字提示。
 
 ---
 
@@ -217,6 +234,7 @@ pnpm ocr:build
 | 搜索报 401/402 | 检查 `LLM_API_KEY` 与 DeepSeek 账户余额；Search 复用同一个 key |
 | 搜索报 400 / 模型不调用工具 | 确认 `LLM_MODEL` 支持 Tool Calls；可改用 `deepseek-flash` 或 `deepseek-v4-pro` |
 | 图表发送失败 | 确认 `MEDIA_OUTBOUND_ENABLED=true`、`sips` 可用；看 worker/gateway 日志和 `xiaoqi_send_total` |
+| 文件发送失败 | 检查 `MEDIA_OUTBOUND_ENABLED`、文件大小、gateway 日志；CSV 用 `/export csv` 再试 |
 | 图片显示灰色/无法打开 | 检查 `aes_key` 是否为 base64(hex 字符串)、CDN 响应是否有 `x-encrypted-param` |
 | Mermaid 渲染失败 | 检查 `MERMAID_ENABLED`、`mermaid.ink` 网络、`MERMAID_TIMEOUT_MS`；看 worker 日志 |
 | 预算告警不发送 | 检查 `ALERT_WEBHOOK_URL`，以及是否已达到 50/80/100% |

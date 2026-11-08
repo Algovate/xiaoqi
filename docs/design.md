@@ -115,6 +115,8 @@ getupdates
 
 - `/chart bar|line|pie 标题 | 标签=数值,...` 由 worker 解析并生成 SVG，再用 macOS `sips` 转 PNG。
 - 多系列：`标签=数值1/数值2,... | 系列1/系列2`，支持分组柱状和多条折线；最多 4 个系列。
+- 堆叠柱：`/chart stacked bar ...`，按标签累加系列值。
+- CSV 附件：前 200 行作为文本注入上下文，模型可直接按列生成图表。
 - 画布按数据量自适应：少量数据 620 宽，复杂图表 800 宽，提升微信缩略图可读性。
 - 模型也可通过 `render_chart` 工具自然语言触发；工具参数校验后才渲染，图片先于文字说明发送。
 - 图片通过 gateway `/internal/v1/send-image`（内部 base64）发送，不经过任意文件路径。
@@ -122,7 +124,14 @@ getupdates
 - 依赖最近入站消息的 `context_token`；发送失败回退文本提示，不阻塞原命令。
 - 仅支持柱状/折线/饼图；AI 生图/自由绘画不在范围内。
 
-### 3.8 Mermaid 架构图 / 流程图
+### 3.8 文件出站 / CSV 导出
+
+- iLink `sendFile` 复用 `getuploadurl` → AES-128-ECB/PKCS#7 → CDN → `sendmessage(file_item)`。
+- gateway `/internal/v1/send-file` 接受内部 base64，校验文件名/大小，写入 `outbound_messages(kind=file)`。
+- `/export csv` 导出当前对话最近 500 条消息，UTF-8 BOM，走文件出站。
+- 文件上限 `MEDIA_OUTBOUND_MAX_BYTES`，失败回退文本。
+
+### 3.9 Mermaid 架构图 / 流程图
 
 - `/mermaid <Mermaid 源码>` 或模型 `render_mermaid` 工具触发。
 - worker 把源码 base64url 编码，请求 `mermaid.ink/img/...?bgColor=white&type=png&width=600`。
@@ -148,6 +157,7 @@ getupdates
 | 联网搜索（DeepSeek Search，模型按需调用） | ✅ |
 | 数据图表 + 图片出站（`/chart`、`render_chart`，iLink CDN） | ✅ |
 | Mermaid 架构/流程图（`/mermaid`、`render_mermaid`） | ✅ |
+| 通用文件出站 + `/export csv` | ✅ |
 | Admin 仪表盘 + 每日 token 预算 | ✅ |
 | Prometheus `/metrics` + 预算 Webhook | ✅ |
 | Codex / DSH runner + resume + diff | ✅ |
@@ -166,6 +176,7 @@ getupdates
 | `/search <问题>` | 强制联网搜索并回答（带来源） |
 | `/chart <类型> <标题> \| 标签=数值,...` | 生成柱状/折线/饼图并发送图片 |
 | `/mermaid <Mermaid 源码>` | 生成架构/流程图并发送图片 |
+| `/export csv` | 导出当前对话最近 500 条消息并发送 CSV |
 | `/remind <时间> <内容>` | 定时提醒 |
 | `/codex <repo> <任务>` | 启动 Codex |
 | `/codex resume <id> <指令>` | 继续 Codex session |
@@ -244,6 +255,8 @@ OCR_ENABLED=auto
 - 知识库当前全局、关键词检索；不含用户隔离/embedding。
 - 联网搜索只把模型生成的 query 发给 DeepSeek Search，不抓取任意 URL；结果按不可信数据处理。
 - 图片出站只接受内部 base64、校验 PNG/JPEG/WebP 魔数与 5MB 上限；不读取任意文件路径。
+- 文件出站只接受内部 base64 和 basename 文件名；大小受 `MEDIA_OUTBOUND_MAX_BYTES` 限制。
+- CSV 导出对 `=/+/-/@` 开头的单元格加前缀，避免 Excel 公式注入。
 - Mermaid 源码会发送给 mermaid.ink；敏感图可关闭 `MERMAID_ENABLED`，不落库、不抓取任意 URL。
 
 ---
