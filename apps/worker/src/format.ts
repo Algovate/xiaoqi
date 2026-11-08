@@ -1,3 +1,7 @@
+export function wechatLineBreaks(text: string): string {
+  return text.replace(/\r\n/g, "\n").replace(/(?<!\n)\n(?!\n)/g, "\n\n");
+}
+
 export function sanitizeReply(text: string): string {
   return text
     .replace(/^#{1,6}\s+/gm, "")

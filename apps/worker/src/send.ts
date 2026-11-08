@@ -1,6 +1,6 @@
 import fsp from "node:fs/promises";
 import type { AppConfig, MessageRow } from "@xiaoqi/core";
-import { chunkReply } from "./format.js";
+import { chunkReply, wechatLineBreaks } from "./format.js";
 import type { OutboundFile } from "./outbound-file.js";
 
 export type SendMedia = OutboundFile;
@@ -50,7 +50,7 @@ export async function sendTextChunks(
   msg: MessageRow,
   text: string,
 ): Promise<number> {
-  const chunks = chunkReply(text);
+  const chunks = chunkReply(wechatLineBreaks(text));
   for (let i = 0; i < chunks.length; i += 1) {
     const resp = await fetch(`${config.GATEWAY_INTERNAL_URL}/internal/v1/send`, {
       method: "POST",

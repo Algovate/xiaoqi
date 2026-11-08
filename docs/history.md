@@ -24,6 +24,8 @@
 | Code Delivery | 代码块转 .py/.js/.ts 文件 | — |
 | Interactive HTML | `render_html`、CSP、HTML 文件出站 | — |
 | P0 | 入站合并、CI、工具/附件指标、smoke | — |
+| Commands | 核心/高级分层、`/help all`、`/export` 默认 CSV | — |
+| Formatting | 微信单换行归一化 | — |
 
 ## 已归档
 

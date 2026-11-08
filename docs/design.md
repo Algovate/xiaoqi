@@ -76,6 +76,7 @@ getupdates
 
 - `message_id` 必须保留为字符串；iLink 的 JSON number 会超过 JS 安全整数。
 - `context_token` 按 `dm:<wx_user_id>` 加密存储。
+- 微信文本会把单换行折叠成空格；发送前统一把单换行扩成空行。
 - 发送幂等键 `(run_id, chunk_index)`。
 - 同一会话 `INBOUND_COALESCE_MS`（默认 800ms）内的入站突发合并；只有最新消息创建 run，文件+文字不会双回复。
 - 游标只在事务提交后推进。

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkReply, sanitizeReply } from "../src/format.js";
+import { chunkReply, sanitizeReply, wechatLineBreaks } from "../src/format.js";
 
 describe("sanitizeReply", () => {
   it("removes markdown headings and bold markers", () => {
@@ -12,6 +12,12 @@ describe("sanitizeReply", () => {
 
   it("removes inline backticks", () => {
     expect(sanitizeReply("用 `a, b = b, a + b` 更新")).toBe("用 a, b = b, a + b 更新");
+  });
+});
+
+describe("wechatLineBreaks", () => {
+  it("turns single newlines into paragraph breaks without touching existing breaks", () => {
+    expect(wechatLineBreaks("a\nb\n\nc")).toBe("a\n\nb\n\nc");
   });
 });
 
