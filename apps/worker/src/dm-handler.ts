@@ -17,6 +17,7 @@ import { welcomeText } from "./welcome.js";
 import { sendFile, sendImage, sendTextChunks } from "./send.js";
 import { dailyTokensUsed } from "./budget.js";
 import { maybeAlertBudget } from "./alerts.js";
+import { latestInbound, loadInboundBurst } from "./inbound.js";
 
 interface DmJob {
   accountId: string;
@@ -56,11 +57,25 @@ export function createDmHandler(deps: DmHandlerDeps) {
       .from(messages)
       .where(eq(messages.id, Number(messageId)))
       .limit(1);
-    const msg = rows[0];
+    let msg = rows[0];
     if (!msg || msg.direction !== "in" || msg.accountId !== accountId) {
       logger.warn({ accountId, messageId }, "dm job skipped: message not found/not inbound");
       return;
     }
+
+    // Coalesce a short inbound burst (file + text often arrive as two messages).
+    if (config.INBOUND_COALESCE_MS > 0) {
+      await new Promise((resolve) => setTimeout(resolve, config.INBOUND_COALESCE_MS));
+    }
+    const latest = await latestInbound(db, msg.conversationKey);
+    if (latest && latest.id !== msg.id) {
+      logger.info(
+        { accountId, messageId: msg.id, latestMessageId: latest.id },
+        "dm job coalesced into newer message",
+      );
+      return;
+    }
+    msg = await loadInboundBurst(db, msg);
 
     const userRows = msg.userId
       ? await db.select().from(users).where(eq(users.id, msg.userId)).limit(1)

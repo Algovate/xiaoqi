@@ -1,3 +1,4 @@
+import { toolDuration, toolTotal } from "@xiaoqi/core";
 import {
   chat,
   type ChatMessage,
@@ -89,12 +90,21 @@ export async function chatWithTools(
         }
 
         toolCallCount += 1;
+        const toolStarted = process.hrtime.bigint();
+        let result: "success" | "error" = "success";
         let output: string;
         try {
           const args = parseToolArguments(call.function.arguments);
           output = await execute(call.function.name, args);
         } catch (err) {
+          result = "error";
           output = `工具执行失败：${err instanceof Error ? err.message : String(err)}`;
+        } finally {
+          toolTotal.inc({ tool: call.function.name, result });
+          toolDuration.observe(
+            { tool: call.function.name },
+            Number(process.hrtime.bigint() - toolStarted) / 1e9,
+          );
         }
         transcript.push({ role: "tool", tool_call_id: call.id, content: output });
       }

@@ -66,6 +66,28 @@ export const webSearchTotal = new Counter({
   registers: [registry],
 });
 
+export const toolTotal = new Counter({
+  name: "xiaoqi_tool_total",
+  help: "Tool calls by tool and result",
+  labelNames: ["tool", "result"],
+  registers: [registry],
+});
+
+export const toolDuration = new Histogram({
+  name: "xiaoqi_tool_duration_seconds",
+  help: "Tool call duration",
+  labelNames: ["tool"],
+  buckets: [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+  registers: [registry],
+});
+
+export const attachmentParseTotal = new Counter({
+  name: "xiaoqi_attachment_parse_total",
+  help: "Attachment ingestion by kind and result",
+  labelNames: ["kind", "result"],
+  registers: [registry],
+});
+
 export const budgetExceeded = new Counter({
   name: "xiaoqi_budget_exceeded_total",
   help: "Times a user hit the daily token budget",

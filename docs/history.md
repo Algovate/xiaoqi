@@ -23,6 +23,7 @@
 | Attachments | 扩展名识别、最近附件追问、长文档分块摘要 | — |
 | Code Delivery | 代码块转 .py/.js/.ts 文件 | — |
 | Interactive HTML | `render_html`、CSP、HTML 文件出站 | — |
+| P0 | 入站合并、CI、工具/附件指标、smoke | — |
 
 ## 已归档
 
@@ -33,4 +34,4 @@
 
 ## 当前状态
 
-M1–M5c + 联网搜索 + 数据图表 + Mermaid + 文件出站已实现；下一步是语义检索、RBAC/TOTP、逐行 diff review。
+M1–M5c + 联网搜索 + 图表/Mermaid/文件/HTML + P0 稳定性已实现；下一步是 runner 隔离、RBAC/TOTP、语义检索。

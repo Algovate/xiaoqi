@@ -63,6 +63,7 @@ x-admin-token: <ADMIN_TOKEN>
 | `MERMAID_RENDER_BASE_URL` |  | 默认 `https://mermaid.ink` |
 | `MERMAID_TIMEOUT_MS` |  | 默认 30000 |
 | `MAX_DAILY_TOKENS` |  | 默认 100000 |
+| `INBOUND_COALESCE_MS` |  | 默认 800；同一会话入站合并窗口，0 关闭 |
 | `ATTACHMENT_SUMMARY_ENABLED` |  | 默认 `true`；长附件分块摘要 |
 | `ATTACHMENT_SUMMARY_THRESHOLD_CHARS` |  | 默认 20000 |
 | `ATTACHMENT_SUMMARY_MAX_CHUNKS` |  | 默认 8 |
@@ -100,6 +101,16 @@ openssl rand -hex 24      # INTERNAL_TOKEN / ADMIN_TOKEN
 /codex resume <id> 继续
 /dsh xiaoqi 分析仓库
 ```
+
+### 消息合并
+
+同一会话 800ms 内的文件+文字会合并成一次 run，避免双回复和上下文串线。
+
+```dotenv
+INBOUND_COALESCE_MS=800
+```
+
+快速连发的两个独立请求也会合并；不想要就设 `0`。
 
 ### 欢迎语
 
@@ -213,6 +224,40 @@ scrape_configs:
 ```
 
 指标说明见 [archive/milestones/m4b.md](./archive/milestones/m4b.md)。
+
+新增指标：
+
+- `xiaoqi_tool_total{tool,result}`：工具调用成功/异常
+- `xiaoqi_tool_duration_seconds{tool}`：工具耗时
+- `xiaoqi_attachment_parse_total{kind,result}`：附件解析成功/失败
+
+建议告警规则：
+
+```yaml
+- alert: XiaoqiPollerDown
+  expr: xiaoqi_poll_up == 0
+  for: 2m
+- alert: XiaoqiToolErrors
+  expr: rate(xiaoqi_tool_total{result="error"}[5m]) > 0
+  for: 5m
+- alert: XiaoqiAttachmentErrors
+  expr: rate(xiaoqi_attachment_parse_total{result="error"}[5m]) > 0
+  for: 5m
+- alert: XiaoqiSendFailures
+  expr: rate(xiaoqi_send_total{result="failed"}[5m]) > 0
+  for: 5m
+```
+
+### CI / Smoke
+
+- GitHub Actions：`.github/workflows/ci.yml`，push/PR 自动 `pnpm typecheck` + `pnpm test`。
+- 本地/服务器健康检查：
+
+```bash
+pnpm smoke
+```
+
+检查 4100/4101/4102 health 和 `xiaoqi_poll_up=1`；失败退出码非 0。
 
 ---
 

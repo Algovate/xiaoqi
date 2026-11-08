@@ -77,6 +77,7 @@ getupdates
 - `message_id` 必须保留为字符串；iLink 的 JSON number 会超过 JS 安全整数。
 - `context_token` 按 `dm:<wx_user_id>` 加密存储。
 - 发送幂等键 `(run_id, chunk_index)`。
+- 同一会话 `INBOUND_COALESCE_MS`（默认 800ms）内的入站突发合并；只有最新消息创建 run，文件+文字不会双回复。
 - 游标只在事务提交后推进。
 
 ### 3.3 图片/文件
@@ -244,6 +245,7 @@ MERMAID_ENABLED=true
 MERMAID_RENDER_BASE_URL=https://mermaid.ink
 MERMAID_TIMEOUT_MS=30000
 MAX_DAILY_TOKENS=100000
+INBOUND_COALESCE_MS=800
 ALERT_WEBHOOK_URL=
 CODEX_BIN=codex
 DSH_BIN=dsh
@@ -282,6 +284,7 @@ OCR_ENABLED=auto
 - 交互式 HTML 不能微信内嵌预览；CSP 阻止外部网络，复杂依赖需内联，文件上限 300KB。
 - 图片出站依赖非官方 iLink `getuploadurl` 协议和最近 `context_token`；主动推送图片可能失败。
 - 附件文本当前轮 + 最近 10 分钟追问可用，未做持久附件 RAG。
+- 800ms 内用户快速发的两个独立请求会合并成一轮；可调 `INBOUND_COALESCE_MS` 或设 0 关闭。
 - DSH 只有 `headless`，无 session/resume。
 - 无 RBAC/TOTP、无逐行 diff review、无语音回复。
 - 群聊方案已归档，等官方群能力再评估。
@@ -290,11 +293,12 @@ OCR_ENABLED=auto
 
 ## 10. 下一步
 
-1. 语义检索（embedding + pgvector）。
-2. RBAC/TOTP（多管理员/公网后台）。
-3. 逐行 diff / code review。
-4. 附件持久化 RAG / 语音回复。
-5. Grafana/Alertmanager 规则。
+1. P0 稳定性：入站消息合并、CI、工具/附件指标、smoke ✅
+2. Runner 隔离：Codex/DSH 容器化，禁止读取 `.env` 和数据库。
+3. RBAC/TOTP、审计日志、备份恢复演练。
+4. 语义检索（embedding + pgvector）。
+5. 附件持久化 RAG / 语音回复。
+6. Grafana/Alertmanager 规则。
 
 ---
 

@@ -3,7 +3,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { and, desc, eq, gt } from "drizzle-orm";
 import type { AppConfig, Database, MessageRow } from "@xiaoqi/core";
-import { mediaAssets, messages } from "@xiaoqi/core";
+import { attachmentParseTotal, mediaAssets, messages } from "@xiaoqi/core";
 import { describeImage } from "./llm.js";
 import { ocrFile } from "./ocr.js";
 
@@ -52,10 +52,13 @@ export async function extractAttachments(
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index]!;
     if (item.type !== 2 && item.type !== 4) continue;
+    const kind = item.type === 2 ? "image" : "file";
     try {
       const block = await ingestOne(db, config, msg, item, index);
       if (block) blocks.push(block);
+      attachmentParseTotal.inc({ kind, result: "success" });
     } catch (err) {
+      attachmentParseTotal.inc({ kind, result: "error" });
       blocks.push(`[附件处理失败：${err instanceof Error ? err.message : String(err)}]`);
     }
   }

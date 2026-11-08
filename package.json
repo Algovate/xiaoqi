@@ -11,6 +11,7 @@
     "db:migrate": "pnpm --filter @xiaoqi/core migrate",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
     "fake:ilink": "node poc/fake-ilink.mjs",
     "ilink:login": "pnpm --filter @xiaoqi/gateway auth",
     "ocr:build": "bash tools/build-ocr.sh",
