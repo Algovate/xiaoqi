@@ -2,7 +2,7 @@
 
 > 更新：2026-11-06
 >
-> 状态：v1 已实现 M1–M5c + 联网搜索 + 数据图表/图片出站；本文是**当前系统**的单一入口。
+> 状态：v1 已实现 M1–M5c + 联网搜索 + 数据图表/Mermaid/图片出站；本文是**当前系统**的单一入口。
 >
 > 历史设计：[DM v0.1](./archive/design-dm-v0.1.md)、[群助手设计](./archive/group-design.md)。
 >
@@ -15,7 +15,7 @@
 小栖是**微信私聊 AI 助理**：
 
 - 用户在微信里直接和小栖对话，不需要建群、不需要 @；
-- 能问答、看图片/PDF、总结对话、记提醒、查本地知识库、生成数据图表；
+- 能问答、看图片/PDF、总结对话、记提醒、查本地知识库、生成数据图表和架构/流程图；
 - 能通过 `/codex`、`/dsh` 把编码任务交给外部 runner；
 - 单运营方、小范围用户，不做公开 SaaS。
 
@@ -121,6 +121,14 @@ getupdates
 - 依赖最近入站消息的 `context_token`；发送失败回退文本提示，不阻塞原命令。
 - 仅支持柱状/折线/饼图；AI 生图/自由绘画不在范围内。
 
+### 3.8 Mermaid 架构图 / 流程图
+
+- `/mermaid <Mermaid 源码>` 或模型 `render_mermaid` 工具触发。
+- worker 把源码 base64url 编码，请求 `mermaid.ink/img/...?bgColor=white&type=png&width=900`。
+- 返回 PNG/JPEG/WebP，校验魔数和大小后走既有图片出站链路。
+- 源码会发送给 mermaid.ink；敏感架构图可设 `MERMAID_ENABLED=false` 关闭。
+- 失败时回退文本提示，不影响对话。
+
 ---
 
 ## 4. 当前能力
@@ -138,6 +146,7 @@ getupdates
 | 知识库关键词检索 + `kb:ingest` | ✅ |
 | 联网搜索（DeepSeek Search，模型按需调用） | ✅ |
 | 数据图表 + 图片出站（`/chart`、`render_chart`，iLink CDN） | ✅ |
+| Mermaid 架构/流程图（`/mermaid`、`render_mermaid`） | ✅ |
 | Admin 仪表盘 + 每日 token 预算 | ✅ |
 | Prometheus `/metrics` + 预算 Webhook | ✅ |
 | Codex / DSH runner + resume + diff | ✅ |
@@ -155,6 +164,7 @@ getupdates
 | `/summary` | 总结最近对话并写摘要 |
 | `/search <问题>` | 强制联网搜索并回答（带来源） |
 | `/chart <类型> <标题> \| 标签=数值,...` | 生成柱状/折线/饼图并发送图片 |
+| `/mermaid <Mermaid 源码>` | 生成架构/流程图并发送图片 |
 | `/remind <时间> <内容>` | 定时提醒 |
 | `/codex <repo> <任务>` | 启动 Codex |
 | `/codex resume <id> <指令>` | 继续 Codex session |
@@ -207,6 +217,9 @@ WEB_SEARCH_TIMEOUT_MS=15000
 ILINK_CDN_BASE=https://novac2c.cdn.weixin.qq.com/c2c
 MEDIA_OUTBOUND_ENABLED=true
 MEDIA_OUTBOUND_MAX_BYTES=5000000
+MERMAID_ENABLED=true
+MERMAID_RENDER_BASE_URL=https://mermaid.ink
+MERMAID_TIMEOUT_MS=30000
 MAX_DAILY_TOKENS=100000
 ALERT_WEBHOOK_URL=
 CODEX_BIN=codex
@@ -230,6 +243,7 @@ OCR_ENABLED=auto
 - 知识库当前全局、关键词检索；不含用户隔离/embedding。
 - 联网搜索只把模型生成的 query 发给 DeepSeek Search，不抓取任意 URL；结果按不可信数据处理。
 - 图片出站只接受内部 base64、校验 PNG/JPEG/WebP 魔数与 5MB 上限；不读取任意文件路径。
+- Mermaid 源码会发送给 mermaid.ink；敏感图可关闭 `MERMAID_ENABLED`，不落库、不抓取任意 URL。
 
 ---
 
@@ -239,6 +253,7 @@ OCR_ENABLED=auto
 - 知识库不是语义检索，同义改写可能搜不到。
 - 联网搜索最多 2 次、3 次模型调用，只读摘要不读网页正文；复杂研究问题可能不够。
 - 图表只支持柱状/折线/饼图，PNG 渲染依赖 macOS `sips`；不做 AI 生图/自由绘画。
+- Mermaid 依赖外部 mermaid.ink，复杂主题/样式不可控；服务不可用时回退文本。
 - 图片出站依赖非官方 iLink `getuploadurl` 协议和最近 `context_token`；主动推送图片可能失败。
 - 附件文本只在当前轮使用，未做持久附件 RAG。
 - DSH 只有 `headless`，无 session/resume。

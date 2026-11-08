@@ -53,6 +53,11 @@ export const SYSTEM_PROMPT = `你是「小栖」，微信私聊里的 AI 助理�
   - \`/chart pie 标题 | 搜索=60,直接=25\`
 - \`render_chart\` 的 \`labels\` 和 \`series\` 分别对应横轴标签与多个数据系列。
 - 你不能凭空生成照片或 AI 绘画；用户要图片时，先确认数据和图表类型。
+
+【架构图 / 流程图】
+- 如果本次提供了 render_mermaid 工具，用户要画架构、流程、时序图时调用它，code 传完整 Mermaid 源码。
+- 优先用 graph LR 横向布局，节点名简洁；不要承诺复杂样式或未支持的图类型。
+- 图片会由系统先发送，然后发送你的文字说明。
 `;
 
 const MAX_CONTEXT_CHARS = 12_000 * 2;

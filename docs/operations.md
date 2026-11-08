@@ -59,6 +59,9 @@ x-admin-token: <ADMIN_TOKEN>
 | `MEDIA_DIR` |  | 媒体目录，默认 `./data/media` |
 | `MEDIA_OUTBOUND_ENABLED` |  | 默认 `true`；图片/图表出站开关 |
 | `MEDIA_OUTBOUND_MAX_BYTES` |  | 默认 5000000 |
+| `MERMAID_ENABLED` |  | 默认 `true`；Mermaid 渲染开关 |
+| `MERMAID_RENDER_BASE_URL` |  | 默认 `https://mermaid.ink` |
+| `MERMAID_TIMEOUT_MS` |  | 默认 30000 |
 | `MAX_DAILY_TOKENS` |  | 默认 100000 |
 | `ALERT_WEBHOOK_URL` |  | 企业微信 Webhook |
 | `OCR_ENABLED` |  | `auto/true/false` |
@@ -123,6 +126,7 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 /chart bar 月销量 | 一月=120,二月=180,三月=150
 /chart bar 销量/成本 | 一月=12/8,二月=18/10 | 销量/成本
 /chart line 温度趋势 | 周一=12,周二=14
+/mermaid graph LR A[用户]-->B[网关]-->C[Worker]
 /chart pie 流量占比 | 搜索=60,直接=25,其他=15
 ```
 
@@ -131,6 +135,25 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 - `MEDIA_OUTBOUND_ENABLED=false` 可完全关闭；单图上限 `MEDIA_OUTBOUND_MAX_BYTES`。
 - 依赖最近一次入站消息的 `context_token`；主动推送图片可能失败。
 - 只支持柱状/折线/饼图；AI 生图不在范围内。
+
+### Mermaid 架构图
+
+`/mermaid` 可发完整的 Mermaid 源码：
+
+```text
+/mermaid graph LR
+  A[微信用户] --> B[网关]
+  B --> C[Worker]
+  C --> D[DeepSeek]
+  C --> E[PostgreSQL]
+  C --> F[Redis]
+```
+
+也可以直接说“画一个小栖的架构图……”，模型会调用 `render_mermaid`。
+
+- 渲染走 `mermaid.ink`，源码会发送给该外部服务；敏感架构图请设 `MERMAID_ENABLED=false`。
+- 默认 `type=png`、白底、宽 900；返回图片走现有 iLink 图片出站。
+- 服务不可用/超时/返回非图片时回退文本提示。
 
 ---
 
@@ -195,6 +218,7 @@ pnpm ocr:build
 | 搜索报 400 / 模型不调用工具 | 确认 `LLM_MODEL` 支持 Tool Calls；可改用 `deepseek-flash` 或 `deepseek-v4-pro` |
 | 图表发送失败 | 确认 `MEDIA_OUTBOUND_ENABLED=true`、`sips` 可用；看 worker/gateway 日志和 `xiaoqi_send_total` |
 | 图片显示灰色/无法打开 | 检查 `aes_key` 是否为 base64(hex 字符串)、CDN 响应是否有 `x-encrypted-param` |
+| Mermaid 渲染失败 | 检查 `MERMAID_ENABLED`、`mermaid.ink` 网络、`MERMAID_TIMEOUT_MS`；看 worker 日志 |
 | 预算告警不发送 | 检查 `ALERT_WEBHOOK_URL`，以及是否已达到 50/80/100% |
 | Admin 401 | `ADMIN_TOKEN` 是否与 `.env` 一致；api 是否重启 |
 

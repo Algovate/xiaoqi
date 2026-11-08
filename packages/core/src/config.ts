@@ -46,6 +46,9 @@ const EnvSchema = z.object({
   MEDIA_DIR: z.string().min(1).default("./data/media"),
   MEDIA_OUTBOUND_ENABLED: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
   MEDIA_OUTBOUND_MAX_BYTES: z.coerce.number().int().positive().default(5_000_000),
+  MERMAID_ENABLED: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  MERMAID_RENDER_BASE_URL: z.string().min(1).default("https://mermaid.ink"),
+  MERMAID_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   OCR_ENABLED: z.enum(["auto", "true", "false"]).default("auto"),
   OCR_BIN: z.string().default(""),
 });

@@ -169,7 +169,10 @@ export function createDmHandler(deps: DmHandlerDeps) {
     const searchQuery = getSearchQuery(command);
     const forceSearch = searchQuery !== null;
 
-    if (msg.userId && !(command && ["help", "whoami", "reset", "remind", "chart"].includes(command.name))) {
+    if (
+      msg.userId &&
+      !(command && ["help", "whoami", "reset", "remind", "chart", "mermaid"].includes(command.name))
+    ) {
       try {
         const used = await dailyTokensUsed(pool, msg.userId);
         await maybeAlertBudget(config, logger, {

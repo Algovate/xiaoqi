@@ -9,6 +9,7 @@ import { extractAttachments } from "./media.js";
 import { sanitizeReply } from "./format.js";
 import { chatWithTools } from "./agent.js";
 import { chartSpecFromTool, RENDER_CHART_TOOL, renderChartPng } from "./chart.js";
+import { RENDER_MERMAID_TOOL, renderMermaidPng } from "./mermaid.js";
 import {
   executeWebSearchTool,
   formatSourceList,
@@ -98,11 +99,13 @@ export async function generateAnswer(
     const webSearchEnabled =
       isWebSearchEnabled(config) && (forceSearch || config.WEB_SEARCH_AUTO);
     const chartEnabled = config.MEDIA_OUTBOUND_ENABLED;
+    const mermaidEnabled = config.MERMAID_ENABLED;
     const searchSession: WebSearchSession = { sources: [], nextIndex: 1 };
-    const chartSession: { media?: { path: string; mime: string; filename: string } } = {};
+    const mediaSession: { media?: { path: string; mime: string; filename: string } } = {};
     const tools: ToolDefinition[] = [];
     if (webSearchEnabled) tools.push(WEB_SEARCH_TOOL);
     if (chartEnabled) tools.push(RENDER_CHART_TOOL);
+    if (mermaidEnabled) tools.push(RENDER_MERMAID_TOOL);
 
     let result: ChatResult;
     try {
@@ -132,10 +135,10 @@ export async function generateAnswer(
                       await fsp.unlink(file.path).catch(() => undefined);
                       return "图表太大，减少数据点再试。";
                     }
-                    if (chartSession.media) {
-                      await fsp.unlink(chartSession.media.path).catch(() => undefined);
+                    if (mediaSession.media) {
+                      await fsp.unlink(mediaSession.media.path).catch(() => undefined);
                     }
-                    chartSession.media = {
+                    mediaSession.media = {
                       path: file.path,
                       mime: file.mime,
                       filename: path.basename(file.path),
@@ -144,6 +147,26 @@ export async function generateAnswer(
                   } catch (err) {
                     logger.warn({ err, runId }, "chart render failed");
                     return `图表生成失败：${err instanceof Error ? err.message : String(err)}`;
+                  }
+                }
+                if (name === "render_mermaid") {
+                  if (!mermaidEnabled) return "Mermaid 渲染未启用。";
+                  const code = typeof args.code === "string" ? args.code : "";
+                  try {
+                    const outputDir = path.resolve(config.MEDIA_DIR, "outbound");
+                    const file = await renderMermaidPng(config, code, outputDir);
+                    if (mediaSession.media) {
+                      await fsp.unlink(mediaSession.media.path).catch(() => undefined);
+                    }
+                    mediaSession.media = {
+                      path: file.path,
+                      mime: file.mime,
+                      filename: path.basename(file.path),
+                    };
+                    return "Mermaid 图已生成。系统会先发图片，再发你的文字说明；请用一句话说明架构或流程。";
+                  } catch (err) {
+                    logger.warn({ err, runId }, "mermaid render failed");
+                    return `Mermaid 渲染失败：${err instanceof Error ? err.message : String(err)}`;
                   }
                 }
                 return `未知工具：${name}`;
@@ -181,7 +204,7 @@ export async function generateAnswer(
       promptTokens: result.promptTokens,
       completionTokens: result.completionTokens,
       model: result.model,
-      media: chartSession.media,
+      media: mediaSession.media,
     };
   } catch (err) {
     logger.error({ err, runId }, "llm failed; sending fallback");

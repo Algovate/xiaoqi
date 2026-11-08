@@ -8,6 +8,7 @@ import { chat } from "./llm.js";
 import { handleTaskCommand } from "./task-commands.js";
 import { isWebSearchEnabled } from "./web-search.js";
 import { CHART_USAGE, parseChartCommand, renderChartPng } from "./chart.js";
+import { MERMAID_USAGE, renderMermaidPng } from "./mermaid.js";
 
 export interface Command {
   name: string;
@@ -26,6 +27,7 @@ export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
 /summary  总结最近对话
 /search 今天上海天气     联网搜索并回答
 /chart bar 月销量 | 一月=120,二月=180  生成图表
+/mermaid graph LR A[用户]-->B[小栖]  画架构/流程图
 /remind 明天10点 交周报  设置提醒
 /codex xiaoqi 修复测试  启动 Codex 任务
 /dsh xiaoqi 分析仓库    启动 DSH 任务
@@ -79,6 +81,8 @@ export async function handleCommand(
       return "用法：/search <问题>\n例：/search 今天上海天气";
     case "chart":
       return chartCommand(deps, command.args, effects);
+    case "mermaid":
+      return mermaidCommand(deps, command.args, effects);
     case "codex":
       return handleTaskCommand(deps, msg, command, "codex");
     case "dsh":
@@ -127,6 +131,27 @@ async function chartCommand(
   } catch (err) {
     deps.logger?.warn({ err }, "chart render failed");
     return `图表生成失败：${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+async function mermaidCommand(
+  deps: { config: AppConfig; logger?: Logger },
+  args: string,
+  effects: CommandEffects,
+): Promise<string> {
+  if (!deps.config.MERMAID_ENABLED) {
+    return "Mermaid 渲染未开启：设置 MERMAID_ENABLED=true 后重启 worker。";
+  }
+  if (!args.trim()) return MERMAID_USAGE;
+
+  try {
+    const outputDir = path.resolve(deps.config.MEDIA_DIR, "outbound");
+    const file = await renderMermaidPng(deps.config, args, outputDir);
+    effects.media = { path: file.path, mime: file.mime, filename: path.basename(file.path) };
+    return "Mermaid 图已生成。";
+  } catch (err) {
+    deps.logger?.warn({ err }, "mermaid render failed");
+    return `Mermaid 渲染失败：${err instanceof Error ? err.message : String(err)}`;
   }
 }
 
