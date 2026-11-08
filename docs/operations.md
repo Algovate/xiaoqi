@@ -162,6 +162,20 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 - 默认 `type=png`、白底、宽 600；返回图片走现有 iLink 图片出站。
 - 服务不可用/超时/返回非图片时回退文本提示。
 
+### 交互式 HTML
+
+直接说：
+
+```text
+做一个交互式 BMI 计算器，输入身高体重实时算 BMI。
+```
+
+模型会调用 `render_html`，生成 `.html` 文件并通过文件出站发送。微信不会在气泡里执行 HTML；下载后用浏览器打开即可交互。
+
+- 单文件、CSS/JS 内联，CSP 阻止外部网络请求。
+- 文件上限 300KB；复杂依赖（CDN 图表库、外部字体/图片）会被 CSP 拦截。
+- 页面由模型生成，不要在页面里输入密码/密钥等敏感信息。
+
 ### 文件出站 / CSV 导出
 
 `/export csv` 导出当前对话最近 500 条消息并发送文件：
@@ -236,6 +250,7 @@ pnpm ocr:build
 | 知识库搜不到 | 运行 `pnpm kb:ingest`；当前是关键词检索，不是语义检索 |
 | 发 .md/.txt 提示暂不支持 | 确认是 UTF-8 文本；重新发送一次，worker 会按扩展名解析 |
 | 长文档总结不完整 | 默认最多 8 段、每段约 1.2-3 万字符；看 `long attachment summarized` 日志，必要时调大 `ATTACHMENT_SUMMARY_MAX_CHUNKS` |
+| 交互 HTML 打开是空白/按钮没反应 | 确认用浏览器打开；CSP 会拦截外部 CDN，需模型改成内联 JS/CSS |
 | 联网搜索不触发 | 确认 `WEB_SEARCH_ENABLED`/`WEB_SEARCH_AUTO`；直接发 `/search <问题>`；看 `xiaoqi_web_search_total` |
 | 搜索报 401/402 | 检查 `LLM_API_KEY` 与 DeepSeek 账户余额；Search 复用同一个 key |
 | 搜索报 400 / 模型不调用工具 | 确认 `LLM_MODEL` 支持 Tool Calls；可改用 `deepseek-flash` 或 `deepseek-v4-pro` |

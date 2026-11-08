@@ -134,7 +134,14 @@ getupdates
 - 文件上限 `MEDIA_OUTBOUND_MAX_BYTES`，失败回退文本。
 - 回答中的 Markdown 代码块自动落成 `.py`/`.js`/`.ts` 等文件发送，避免微信折叠单换行、破坏代码缩进；聊天只留说明。
 
-### 3.9 Mermaid 架构图 / 流程图
+### 3.9 交互式 HTML
+
+- 用户要仪表盘、计算器、筛选器、表单时，模型调用 `render_html` 生成单文件 HTML。
+- worker 注入 CSP：`default-src 'none'`、内联 CSS/JS、`connect-src 'none'`，阻止外部网络请求。
+- 文件通过 `/internal/v1/send-file` 发送，聊天只留打开/交互说明。
+- 微信不内嵌执行 HTML；用户需用浏览器打开文件。页面由模型生成，不要输入敏感信息。
+
+### 3.10 Mermaid 架构图 / 流程图
 
 - `/mermaid <Mermaid 源码>` 或模型 `render_mermaid` 工具触发。
 - worker 把源码 base64url 编码，请求 `mermaid.ink/img/...?bgColor=white&type=png&width=600`。
@@ -161,6 +168,7 @@ getupdates
 | 数据图表 + 图片出站（`/chart`、`render_chart`，iLink CDN） | ✅ |
 | Mermaid 架构/流程图（`/mermaid`、`render_mermaid`） | ✅ |
 | 通用文件出站 + `/export csv` | ✅ |
+| 交互式 HTML（`render_html`） | ✅ |
 | Admin 仪表盘 + 每日 token 预算 | ✅ |
 | Prometheus `/metrics` + 预算 Webhook | ✅ |
 | Codex / DSH runner + resume + diff | ✅ |
@@ -271,6 +279,7 @@ OCR_ENABLED=auto
 - 联网搜索最多 2 次、3 次模型调用，只读摘要不读网页正文；复杂研究问题可能不够。
 - 图表只支持柱状/折线/饼图，PNG 渲染依赖 macOS `sips`；不做 AI 生图/自由绘画。
 - Mermaid 依赖外部 mermaid.ink，复杂主题/样式不可控；服务不可用时回退文本。
+- 交互式 HTML 不能微信内嵌预览；CSP 阻止外部网络，复杂依赖需内联，文件上限 300KB。
 - 图片出站依赖非官方 iLink `getuploadurl` 协议和最近 `context_token`；主动推送图片可能失败。
 - 附件文本当前轮 + 最近 10 分钟追问可用，未做持久附件 RAG。
 - DSH 只有 `headless`，无 session/resume。

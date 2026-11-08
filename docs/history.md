@@ -22,6 +22,7 @@
 | File Outbound | `sendFile`、`/export csv`、文件 item | — |
 | Attachments | 扩展名识别、最近附件追问、长文档分块摘要 | — |
 | Code Delivery | 代码块转 .py/.js/.ts 文件 | — |
+| Interactive HTML | `render_html`、CSP、HTML 文件出站 | — |
 
 ## 已归档
 

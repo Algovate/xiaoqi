@@ -32,7 +32,7 @@ knowledge/   知识库源文件
 ## 一句话方案
 
 - **入口**：微信私聊，直接发问题，不需要 @
-- **能力**：首次欢迎语、上下文问答、DeepSeek、图片视觉/OCR、PDF/DOCX/CSV、长文档分块总结、代码文件发送、摘要、提醒、知识库、DeepSeek 联网搜索、`/chart` 数据图表、`/mermaid` 架构/流程图发图、`/export csv` 文件出站
+- **能力**：首次欢迎语、上下文问答、DeepSeek、图片视觉/OCR、PDF/DOCX/CSV、长文档分块总结、代码/交互式 HTML 文件发送、摘要、提醒、知识库、DeepSeek 联网搜索、`/chart` 数据图表、`/mermaid` 架构/流程图发图、`/export csv` 文件出站
 - **任务**：`/codex`、`/dsh` 调度外部编码 runner
 - **运营**：Admin 仪表盘、每日 token 预算、Prometheus 指标
 - **架构**：TypeScript monorepo；gateway/worker/runner/api + PostgreSQL/Redis

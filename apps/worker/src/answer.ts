@@ -13,6 +13,7 @@ import { chartSpecFromTool, RENDER_CHART_TOOL } from "./chart.js";
 import { renderChartPng } from "./chart-render.js";
 import { RENDER_MERMAID_TOOL, renderMermaidPng } from "./mermaid.js";
 import { extractCodeBlocks, removeCodeBlocks, writeCodeFile } from "./code.js";
+import { buildHtmlDocument, RENDER_HTML_TOOL, writeHtmlFile } from "./html.js";
 import {
   executeWebSearchTool,
   formatSourceList,
@@ -129,6 +130,7 @@ export async function generateAnswer(
     const mermaidEnabled = config.MERMAID_ENABLED && chartEnabled;
     const searchSession: WebSearchSession = { sources: [], nextIndex: 1 };
     const mediaSession: { media?: { path: string; mime: string; filename: string } } = {};
+    const fileSession: { file?: { path: string; mime: string; filename: string } } = {};
 
     async function acceptMedia(file: { path: string; mime: string }): Promise<void> {
       if (mediaSession.media) {
@@ -143,7 +145,7 @@ export async function generateAnswer(
 
     const tools: ToolDefinition[] = [];
     if (webSearchEnabled) tools.push(WEB_SEARCH_TOOL);
-    if (chartEnabled) tools.push(RENDER_CHART_TOOL);
+    if (chartEnabled) tools.push(RENDER_CHART_TOOL, RENDER_HTML_TOOL);
     if (mermaidEnabled) tools.push(RENDER_MERMAID_TOOL);
 
     let result: ChatResult;
@@ -194,6 +196,23 @@ export async function generateAnswer(
                     return `Mermaid 渲染失败：${err instanceof Error ? err.message : String(err)}`;
                   }
                 }
+                if (name === "render_html") {
+                  if (!chartEnabled) return "媒体发送未启用。";
+                  const html = typeof args.html === "string" ? args.html : "";
+                  const title = typeof args.title === "string" ? args.title : undefined;
+                  try {
+                    const outputDir = path.resolve(config.MEDIA_DIR, "outbound");
+                    const file = await writeHtmlFile(buildHtmlDocument(html, title), outputDir);
+                    if (fileSession.file) {
+                      await fsp.unlink(fileSession.file.path).catch(() => undefined);
+                    }
+                    fileSession.file = file;
+                    return "交互式 HTML 已生成。系统会先发文件，再发你的文字说明；请用一句话说明怎么打开和交互，不要贴代码。";
+                  } catch (err) {
+                    logger.warn({ err, runId }, "html render failed");
+                    return `HTML 生成失败：${err instanceof Error ? err.message : String(err)}`;
+                  }
+                }
                 return `未知工具：${name}`;
               },
               {
@@ -220,7 +239,8 @@ export async function generateAnswer(
 
     let codeFile: AnswerResult["file"];
     let content = result.content;
-    const codeBlocks = config.MEDIA_OUTBOUND_ENABLED ? extractCodeBlocks(content) : [];
+    const codeBlocks =
+      config.MEDIA_OUTBOUND_ENABLED && !fileSession.file ? extractCodeBlocks(content) : [];
     if (codeBlocks.length > 0) {
       try {
         codeFile = await writeCodeFile(
@@ -246,7 +266,7 @@ export async function generateAnswer(
       completionTokens: result.completionTokens + attachmentCompletionTokens,
       model: result.model,
       media: mediaSession.media,
-      file: codeFile,
+      file: fileSession.file ?? codeFile,
     };
   } catch (err) {
     logger.error({ err, runId }, "llm failed; sending fallback");

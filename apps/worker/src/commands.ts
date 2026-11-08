@@ -39,6 +39,7 @@ export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
 /whoami   查看你的 ID
 /help     显示这条帮助
 
+直接说“做一个交互式 BMI 计算器”，我会生成 HTML 交互页文件。
 问最新消息、天气、价格等时效问题时，我会自动联网搜索；也可以 /search 强制。`;
 
 export function getSearchQuery(command: Command | null): string | null {
