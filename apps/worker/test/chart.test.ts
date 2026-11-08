@@ -20,11 +20,8 @@ describe("parseChartCommand", () => {
     expect(result.spec).toEqual({
       type: "bar",
       title: "月销量",
-      points: [
-        { label: "一月", value: 120 },
-        { label: "二月", value: 180 },
-        { label: "三月", value: 150 },
-      ],
+      labels: ["一月", "二月", "三月"],
+      series: [{ name: "数值", values: [120, 180, 150] }],
     });
   });
 
@@ -34,7 +31,25 @@ describe("parseChartCommand", () => {
     if (!result.ok) return;
     expect(result.spec.type).toBe("pie");
     expect(result.spec.title).toBe("数据图表");
-    expect(result.spec.points).toHaveLength(3);
+    expect(result.spec.labels).toHaveLength(3);
+    expect(result.spec.series[0]!.values).toEqual([60, 25, 15]);
+  });
+
+  it("parses multi-series data with names", () => {
+    const result = parseChartCommand("bar 销量/成本 | 一月=12/8,二月=18/10 | 销量/成本");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.spec.labels).toEqual(["一月", "二月"]);
+    expect(result.spec.series).toEqual([
+      { name: "销量", values: [12, 18] },
+      { name: "成本", values: [8, 10] },
+    ]);
+  });
+
+  it("requires names and consistent columns for multi-series", () => {
+    expect(parseChartCommand("bar 一月=12/8,二月=18/10").ok).toBe(false);
+    expect(parseChartCommand("bar 一月=12/8,二月=18 | 销量/成本").ok).toBe(false);
+    expect(parseChartCommand("pie 一月=12/8,二月=18/10 | 销量/成本").ok).toBe(false);
   });
 
   it("rejects negative, malformed, and empty data", () => {
@@ -51,29 +66,39 @@ describe("chartSpecFromTool", () => {
       chartSpecFromTool({
         type: "bar",
         title: " 月销量 ",
-        data: [
-          { label: "一月", value: 12 },
-          { label: "二月", value: 18 },
-        ],
+        labels: ["一月", "二月"],
+        series: [{ name: " 销量 ", values: [12, 18] }],
       }),
     ).toEqual({
       type: "bar",
       title: "月销量",
-      points: [
-        { label: "一月", value: 12 },
-        { label: "二月", value: 18 },
-      ],
+      labels: ["一月", "二月"],
+      series: [{ name: "销量", values: [12, 18] }],
     });
   });
 
   it("rejects invalid tool data", () => {
-    expect(chartSpecFromTool({ type: "scatter", data: [{ label: "A", value: 1 }] })).toBeNull();
-    expect(chartSpecFromTool({ type: "bar", data: [] })).toBeNull();
-    expect(chartSpecFromTool({ type: "bar", data: [{ label: "A", value: -1 }] })).toBeNull();
+    expect(chartSpecFromTool({ type: "scatter", labels: ["A"], series: [] })).toBeNull();
+    expect(chartSpecFromTool({ type: "bar", labels: [], series: [] })).toBeNull();
+    expect(
+      chartSpecFromTool({
+        type: "bar",
+        labels: ["A"],
+        series: [{ name: "x", values: [1, 2] }],
+      }),
+    ).toBeNull();
+    expect(
+      chartSpecFromTool({
+        type: "bar",
+        labels: ["A"],
+        series: [{ name: "x", values: [-1] }],
+      }),
+    ).toBeNull();
     expect(
       chartSpecFromTool({
         type: "pie",
-        data: Array.from({ length: 9 }, (_, i) => ({ label: `L${i}`, value: 1 })),
+        labels: Array.from({ length: 9 }, (_, i) => `L${i}`),
+        series: [{ name: "x", values: Array.from({ length: 9 }, () => 1) }],
       }),
     ).toBeNull();
   });
@@ -88,15 +113,28 @@ describe("buildChartSvg", () => {
     const svg = buildChartSvg({
       type: "line",
       title: "A < B",
-      points: [
-        { label: "一月", value: 10 },
-        { label: "二月", value: 20 },
-      ],
+      labels: ["一月", "二月"],
+      series: [{ name: "销量", values: [10, 20] }],
     });
     expect(svg).toContain("A &lt; B");
     expect(svg).toContain("<polyline");
     expect(svg).toContain("一月");
     expect(svg).toContain("二月");
+  });
+
+  it("renders a legend for multiple series", () => {
+    const svg = buildChartSvg({
+      type: "bar",
+      title: "对比",
+      labels: ["一月", "二月"],
+      series: [
+        { name: "销量", values: [12, 18] },
+        { name: "成本", values: [8, 10] },
+      ],
+    });
+    expect(svg).toContain("销量");
+    expect(svg).toContain("成本");
+    expect(svg.match(/<rect /g)?.length).toBeGreaterThanOrEqual(4);
   });
 });
 
@@ -144,10 +182,8 @@ describe.skipIf(process.platform !== "darwin")("renderChartPng", () => {
         {
           type: "bar",
           title: "渲染测试",
-          points: [
-            { label: "A", value: 3 },
-            { label: "B", value: 7 },
-          ],
+          labels: ["A", "B"],
+          series: [{ name: "数值", values: [3, 7] }],
         },
         dir,
       );
