@@ -16,6 +16,7 @@
 | M5b | Codex resume、diff | `e208656` |
 | M5c | DSH runner、`/dsh` | `2b53d50` |
 | 收尾 | 拆分 typing/task/runner、文档整理 | `7706ae4` / `09761c3` / `18bf977` |
+| Web Search | DeepSeek Search、按需工具循环、`/search` | — |
 
 ## 已归档
 
@@ -26,4 +27,4 @@
 
 ## 当前状态
 
-M1–M5c 已实现；下一步是语义检索、RBAC/TOTP、逐行 diff review。
+M1–M5c + 联网搜索已实现；下一步是语义检索、RBAC/TOTP、逐行 diff review。

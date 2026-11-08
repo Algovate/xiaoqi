@@ -20,6 +20,11 @@ const EnvSchema = z.object({
   LLM_VISION_MODEL: z.string().default("deepseek-flash"),
   LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
 
+  WEB_SEARCH_ENABLED: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  WEB_SEARCH_AUTO: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  WEB_SEARCH_MAX_RESULTS: z.coerce.number().int().positive().default(5),
+  WEB_SEARCH_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+
   GATEWAY_PORT: z.coerce.number().int().positive().default(4101),
   GATEWAY_INTERNAL_URL: z.string().min(1).default("http://127.0.0.1:4101"),
   WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(4102),

@@ -4,6 +4,7 @@ import { conversationState, messages, reminders } from "@xiaoqi/core";
 import { formatShanghai, parseReminder } from "./time.js";
 import { chat } from "./llm.js";
 import { handleTaskCommand } from "./task-commands.js";
+import { isWebSearchEnabled } from "./web-search.js";
 
 export interface Command {
   name: string;
@@ -16,12 +17,20 @@ export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
 
 可用命令：
 /summary  总结最近对话
+/search 今天上海天气     联网搜索并回答
 /remind 明天10点 交周报  设置提醒
 /codex xiaoqi 修复测试  启动 Codex 任务
 /dsh xiaoqi 分析仓库    启动 DSH 任务
 /reset    清除上下文
 /whoami   查看你的 ID
-/help     显示这条帮助`;
+/help     显示这条帮助
+
+问最新消息、天气、价格等时效问题时，我会自动联网搜索；也可以 /search 强制。`;
+
+export function getSearchQuery(command: Command | null): string | null {
+  if (!command || command.name !== "search" || !command.args) return null;
+  return command.args;
+}
 
 export function parseCommand(text: string | null): Command | null {
   if (!text) return null;
@@ -54,6 +63,11 @@ export async function handleCommand(
       return "已清除当前对话的上下文。";
     case "summary":
       return summarize(deps, msg, user);
+    case "search":
+      if (!isWebSearchEnabled(deps.config)) {
+        return "联网搜索未开启：设置 WEB_SEARCH_ENABLED=true，确认 LLM_API_KEY 已配置后重启 worker。";
+      }
+      return "用法：/search <问题>\n例：/search 今天上海天气";
     case "codex":
       return handleTaskCommand(deps, msg, command, "codex");
     case "dsh":

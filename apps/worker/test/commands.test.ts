@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCommand } from "../src/commands.js";
+import { getSearchQuery, parseCommand } from "../src/commands.js";
 import { normalizeAesKey } from "../src/media.js";
 
 describe("parseCommand", () => {
@@ -13,6 +13,18 @@ describe("parseCommand", () => {
 
   it("ignores normal text", () => {
     expect(parseCommand("你好")).toBeNull();
+  });
+});
+
+describe("getSearchQuery", () => {
+  it("returns the query for /search", () => {
+    expect(getSearchQuery(parseCommand("/search 今天上海天气"))).toBe("今天上海天气");
+  });
+
+  it("returns null for bare or unrelated commands", () => {
+    expect(getSearchQuery(parseCommand("/search"))).toBeNull();
+    expect(getSearchQuery(parseCommand("/help"))).toBeNull();
+    expect(getSearchQuery(null)).toBeNull();
   });
 });
 

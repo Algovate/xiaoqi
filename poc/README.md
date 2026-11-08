@@ -33,7 +33,7 @@
 ## 2. 登录
 
 ```bash
-cd /Users/rodin/Workspace/algovate/ilinkai
+cd /path/to/xiaoqi
 node poc/probe.mjs login
 ```
 
@@ -208,3 +208,17 @@ rm -rf .poc
 ├─ captures/*.jsonl        # 原始消息 + 探针回复结果
 └─ media/*.jpg|png|pdf     # 解密后的媒体
 ```
+
+---
+
+## 11. Codex / DSH runner 假 CLI
+
+`poc/fake-codex.mjs` 和 `poc/fake-dsh.mjs` 是 runner 的离线夹具，已带可执行权限。没有真实 `codex`/`dsh` 时，可这样启动 runner：
+
+```bash
+CODEX_BIN="$PWD/poc/fake-codex.mjs" \
+DSH_BIN="$PWD/poc/fake-dsh.mjs" \
+pnpm dev:runner
+```
+
+或在 `.env` 中把 `CODEX_BIN` / `DSH_BIN` 指向这两个文件的绝对路径。它们只输出固定 JSON/文本，不会真的修改仓库。

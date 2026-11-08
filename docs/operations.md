@@ -51,6 +51,10 @@ x-admin-token: <ADMIN_TOKEN>
 | `LLM_API_KEY` | ✅ | DeepSeek |
 | `LLM_MODEL` |  | `deepseek-chat` |
 | `LLM_VISION_MODEL` |  | `deepseek-flash` |
+| `WEB_SEARCH_ENABLED` |  | 默认 `true`；联网搜索总开关 |
+| `WEB_SEARCH_AUTO` |  | 默认 `true`；模型可自动搜索；`false` 仅 `/search` |
+| `WEB_SEARCH_MAX_RESULTS` |  | 默认 5，最多 10 |
+| `WEB_SEARCH_TIMEOUT_MS` |  | 默认 15000 |
 | `MAX_DAILY_TOKENS` |  | 默认 100000 |
 | `ALERT_WEBHOOK_URL` |  | 企业微信 Webhook |
 | `OCR_ENABLED` |  | `auto/true/false` |
@@ -78,6 +82,7 @@ openssl rand -hex 24      # INTERNAL_TOKEN / ADMIN_TOKEN
 /whoami
 /reset
 /summary
+/search 今天上海天气
 /remind 明天10点 交周报
 /codex list
 /codex xiaoqi 修复失败测试
@@ -94,6 +99,16 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 ```
 
 想对老用户重发，把 `users.welcomed_at` 置空即可。
+
+### 联网搜索
+
+使用 DeepSeek 原生 Search API，不需要额外搜索 key：
+
+1. 确认 `LLM_BASE_URL=https://api.deepseek.com/v1`、`LLM_API_KEY` 可用；
+2. `WEB_SEARCH_ENABLED=true`（默认），重启 worker；
+3. 时效问题由模型按需搜索，也可以 `/search <问题>` 强制搜索。
+
+只关自动搜索：`WEB_SEARCH_AUTO=false`；完全关闭：`WEB_SEARCH_ENABLED=false`。搜索按成功请求计费，复用 DeepSeek 账户余额；不抓取网页正文。
 
 ---
 
@@ -153,6 +168,9 @@ pnpm ocr:build
 | Codex `EPERM` | runner 移到普通终端，不要在 DSH sandbox 里跑 |
 | OCR 没结果 | 确认 `pnpm ocr:build`、`OCR_ENABLED=auto` |
 | 知识库搜不到 | 运行 `pnpm kb:ingest`；当前是关键词检索，不是语义检索 |
+| 联网搜索不触发 | 确认 `WEB_SEARCH_ENABLED`/`WEB_SEARCH_AUTO`；直接发 `/search <问题>`；看 `xiaoqi_web_search_total` |
+| 搜索报 401/402 | 检查 `LLM_API_KEY` 与 DeepSeek 账户余额；Search 复用同一个 key |
+| 搜索报 400 / 模型不调用工具 | 确认 `LLM_MODEL` 支持 Tool Calls；可改用 `deepseek-flash` 或 `deepseek-v4-pro` |
 | 预算告警不发送 | 检查 `ALERT_WEBHOOK_URL`，以及是否已达到 50/80/100% |
 | Admin 401 | `ADMIN_TOKEN` 是否与 `.env` 一致；api 是否重启 |
 

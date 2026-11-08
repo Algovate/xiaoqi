@@ -10,7 +10,7 @@
 | [运行手册](./operations.md) | 启动、环境变量、命令、指标、排障 |
 | [品牌命名](./brand.md) | 小栖 Xiaoqi、Bot 名、repo |
 | [Phase 0 结果](./phase0-results.md) | 群聊 No-Go、私聊验证、最终决策 |
-| [历史时间线](./history.md) | M1–M5c 摘要与提交 |
+| [历史时间线](./history.md) | M1–M5c + 联网搜索 摘要与提交 |
 
 ## 决策与图表
 

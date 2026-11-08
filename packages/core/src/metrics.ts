@@ -59,6 +59,13 @@ export const llmTokens = new Counter({
   registers: [registry],
 });
 
+export const webSearchTotal = new Counter({
+  name: "xiaoqi_web_search_total",
+  help: "Web search calls by result",
+  labelNames: ["result"],
+  registers: [registry],
+});
+
 export const budgetExceeded = new Counter({
   name: "xiaoqi_budget_exceeded_total",
   help: "Times a user hit the daily token budget",

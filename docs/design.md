@@ -1,8 +1,11 @@
 # 小栖 Xiaoqi · 系统设计（当前版）
 
-> 更新：2026-11-06  
-> 状态：v1 已实现 M1–M5；本文是**当前系统**的单一入口。  
-> 历史设计：[DM v0.1](./archive/design-dm-v0.1.md)、[群助手设计](./archive/group-design.md)。  
+> 更新：2026-11-06
+>
+> 状态：v1 已实现 M1–M5c + 联网搜索；本文是**当前系统**的单一入口。
+>
+> 历史设计：[DM v0.1](./archive/design-dm-v0.1.md)、[群助手设计](./archive/group-design.md)。
+>
 > 运行方式：[operations.md](./operations.md)。
 
 ---
@@ -61,7 +64,7 @@ getupdates
   → messages + cursor + outbox（同事务）
   → outbox dispatcher
   → BullMQ dm.message
-  → 命令 / 附件 / 知识库 / 上下文 / LLM
+  → 命令 / 附件 / 知识库 / 按需联网 / 上下文 / LLM
   → 清洗 + 900 字分段（最多 3 条）
   → gateway sendmessage
   → 出站写入 messages(direction=out)
@@ -98,6 +101,15 @@ getupdates
 - 完成后计算 `git diff --stat` + `git status --short`，私聊通知。
 - repo 与用户均在 allowlist；超时杀进程组。
 
+### 3.6 联网搜索
+
+- 使用 DeepSeek 原生 Search API（`/v1/tools/search`），复用 `LLM_API_KEY`，不需要 Tavily 等额外搜索 key。
+- 模型通过 `web_search` 工具按需搜索：最多 2 次搜索、3 次模型调用，单次运行总超时 90s。
+- `WEB_SEARCH_AUTO=true` 时模型自行判断是否搜索；设为 `false` 后只有 `/search` 能触发。
+- `/search <问题>` 强制第一轮调用 `web_search`，回答带 `[1]` 引用和完整 URL。
+- 只读搜索结果的 `summary`/摘要，不抓取任意 URL；工具结果按不可信数据处理。
+- 搜索失败或无结果时明确说明，不编造；最终回答缺少 URL 时自动补来源列表。
+
 ---
 
 ## 4. 当前能力
@@ -113,6 +125,7 @@ getupdates
 | `/summary` `/reset` `/whoami` `/help` | ✅ |
 | `/remind` + 定时发送 | ✅ |
 | 知识库关键词检索 + `kb:ingest` | ✅ |
+| 联网搜索（DeepSeek Search，模型按需调用） | ✅ |
 | Admin 仪表盘 + 每日 token 预算 | ✅ |
 | Prometheus `/metrics` + 预算 Webhook | ✅ |
 | Codex / DSH runner + resume + diff | ✅ |
@@ -128,6 +141,7 @@ getupdates
 | `/whoami` | 当前 wx user id |
 | `/reset` | 清空当前对话上下文（设置 reset_at） |
 | `/summary` | 总结最近对话并写摘要 |
+| `/search <问题>` | 强制联网搜索并回答（带来源） |
 | `/remind <时间> <内容>` | 定时提醒 |
 | `/codex <repo> <任务>` | 启动 Codex |
 | `/codex resume <id> <指令>` | 继续 Codex session |
@@ -155,7 +169,7 @@ getupdates
 | `kb_documents` / `kb_chunks` | 知识库（关键词 tokens） |
 | `codex_tasks` / `codex_task_events` | Codex/DSH 任务与事件 |
 
-迁移在 `packages/core/migrations/`，从 `0001_init.sql` 到 `0006_dsh.sql`。
+迁移在 `packages/core/migrations/`，从 `0001_init.sql` 到 `0007_welcome.sql`。
 
 ---
 
@@ -173,6 +187,10 @@ LLM_BASE_URL=https://api.deepseek.com/v1
 LLM_API_KEY=...
 LLM_MODEL=deepseek-chat
 LLM_VISION_MODEL=deepseek-flash
+WEB_SEARCH_ENABLED=true
+WEB_SEARCH_AUTO=true
+WEB_SEARCH_MAX_RESULTS=5
+WEB_SEARCH_TIMEOUT_MS=15000
 MAX_DAILY_TOKENS=100000
 ALERT_WEBHOOK_URL=
 CODEX_BIN=codex
@@ -194,6 +212,7 @@ OCR_ENABLED=auto
 - 媒体大小限制、MIME/魔数校验；OCR 本地执行。
 - 日志默认不记录消息正文；token 加密存储。
 - 知识库当前全局、关键词检索；不含用户隔离/embedding。
+- 联网搜索只把模型生成的 query 发给 DeepSeek Search，不抓取任意 URL；结果按不可信数据处理。
 
 ---
 
@@ -201,6 +220,7 @@ OCR_ENABLED=auto
 
 - 单账号、单 runner；无多租户。
 - 知识库不是语义检索，同义改写可能搜不到。
+- 联网搜索最多 2 次、3 次模型调用，只读摘要不读网页正文；复杂研究问题可能不够。
 - 附件文本只在当前轮使用，未做持久附件 RAG。
 - DSH 只有 `headless`，无 session/resume。
 - 无 RBAC/TOTP、无逐行 diff review、无语音回复。

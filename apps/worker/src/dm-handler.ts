@@ -5,7 +5,7 @@ import type { Pool } from "pg";
 import type { AppConfig, Database, Logger, MessageRow } from "@xiaoqi/core";
 import { agentDuration, budgetExceeded, llmTokens, messages, runs, runsTotal, users } from "@xiaoqi/core";
 import { generateAnswer } from "./answer.js";
-import { handleCommand, parseCommand } from "./commands.js";
+import { getSearchQuery, handleCommand, parseCommand } from "./commands.js";
 import { welcomeText } from "./welcome.js";
 import { chunkReply } from "./format.js";
 import { dailyTokensUsed } from "./budget.js";
@@ -102,7 +102,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
           triggerMessageId: msg.id,
           status: "running",
           model: config.LLM_MODEL,
-          promptVersion: "dm@2026-11-06.2",
+          promptVersion: "dm@2026-11-08.1",
           traceId: crypto.randomUUID(),
         })
         .onConflictDoNothing()
@@ -125,12 +125,14 @@ export function createDmHandler(deps: DmHandlerDeps) {
       .set({
         status: "running",
         model: config.LLM_MODEL,
-        promptVersion: "dm@2026-11-06.2",
+        promptVersion: "dm@2026-11-08.1",
         errorCode: null,
       })
       .where(eq(runs.id, run.id));
 
     const command = parseCommand(msg.text);
+    const searchQuery = getSearchQuery(command);
+    const forceSearch = searchQuery !== null;
 
     if (msg.userId && !(command && ["help", "whoami", "reset", "remind"].includes(command.name))) {
       try {
@@ -163,7 +165,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
       }
     }
 
-    if (command) {
+    if (command && !forceSearch) {
       let reply: string;
       let commandError: string | null = null;
       try {
@@ -181,7 +183,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
             status: commandError ? "failed" : "sent",
             errorCode: commandError,
             model: "command",
-            promptVersion: "commands@2026-11-06.1",
+            promptVersion: "commands@2026-11-08.1",
             latencyMs: Date.now() - startedAt,
             finishedAt: new Date(),
           })
@@ -215,7 +217,10 @@ export function createDmHandler(deps: DmHandlerDeps) {
     let model = config.LLM_MODEL;
 
     {
-      const answer = await generateAnswer({ config, db, pool, logger }, msg, run.id, run.traceId, user);
+      const answer = await generateAnswer({ config, db, pool, logger }, msg, run.id, run.traceId, user, {
+        query: searchQuery ?? undefined,
+        forceSearch,
+      });
       replyText = welcomePrefix + answer.text;
       errorCode = answer.errorCode;
       promptTokens = answer.promptTokens;

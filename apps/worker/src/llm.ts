@@ -1,48 +1,97 @@
 import type { AppConfig } from "@xiaoqi/core";
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_calls?: ChatToolCall[];
+  tool_call_id?: string;
+  name?: string;
 }
+
+export interface ChatToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+export interface ToolDefinition {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export type ToolChoice = "auto" | "none" | { type: "function"; function: { name: string } };
 
 export interface ChatResult {
   content: string;
   model: string;
   promptTokens: number;
   completionTokens: number;
+  finishReason: string | null;
+  toolCalls: ChatToolCall[];
 }
 
+export type LlmConfig = Pick<
+  AppConfig,
+  "LLM_API_KEY" | "LLM_BASE_URL" | "LLM_MODEL" | "LLM_TIMEOUT_MS"
+>;
+
 interface ChatCompletionResponse {
-  choices?: Array<{ message?: { content?: string } }>;
+  choices?: Array<{
+    message?: { content?: string | null; tool_calls?: ChatToolCall[] };
+    finish_reason?: string;
+  }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string };
 }
 
+export interface ChatOptions {
+  temperature?: number;
+  maxTokens?: number;
+  tools?: ToolDefinition[];
+  toolChoice?: ToolChoice;
+  thinking?: "enabled" | "disabled";
+  timeoutMs?: number;
+}
+
 export async function chat(
-  config: AppConfig,
+  config: LlmConfig,
   messages: ChatMessage[],
-  opts: { temperature?: number; maxTokens?: number } = {},
+  opts: ChatOptions = {},
 ): Promise<ChatResult> {
   if (!config.LLM_API_KEY) {
     throw new Error("LLM_API_KEY 未配置");
   }
 
+  const timeoutMs = opts.timeoutMs ?? config.LLM_TIMEOUT_MS;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.LLM_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const body: Record<string, unknown> = {
+      model: config.LLM_MODEL,
+      messages,
+      temperature: opts.temperature ?? 0.3,
+      max_tokens: opts.maxTokens ?? 1200,
+      stream: false,
+    };
+    if (opts.tools?.length) {
+      body.tools = opts.tools;
+      body.tool_choice = opts.toolChoice ?? "auto";
+    }
+    if (opts.thinking) {
+      body.thinking = { type: opts.thinking };
+    }
+
     const res = await fetch(`${config.LLM_BASE_URL.replace(/\/+$/, "")}/chat/completions`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${config.LLM_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: config.LLM_MODEL,
-        messages,
-        temperature: opts.temperature ?? 0.3,
-        max_tokens: opts.maxTokens ?? 1200,
-        stream: false,
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     const text = await res.text();
@@ -55,17 +104,23 @@ export async function chat(
     if (!res.ok) {
       throw new Error(`LLM HTTP ${res.status}：${json.error?.message ?? text.slice(0, 200)}`);
     }
-    const content = json.choices?.[0]?.message?.content?.trim();
-    if (!content) throw new Error("LLM 返回空内容");
+
+    const choice = json.choices?.[0];
+    const content = choice?.message?.content?.trim() ?? "";
+    const toolCalls = choice?.message?.tool_calls ?? [];
+    if (!content && toolCalls.length === 0) throw new Error("LLM 返回空内容");
+
     return {
       content,
       model: config.LLM_MODEL,
       promptTokens: Number(json.usage?.prompt_tokens ?? 0),
       completionTokens: Number(json.usage?.completion_tokens ?? 0),
+      finishReason: choice?.finish_reason ?? null,
+      toolCalls,
     };
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new Error(`LLM 超时（${config.LLM_TIMEOUT_MS}ms）`);
+      throw new Error(`LLM 超时（${timeoutMs}ms）`);
     }
     throw err;
   } finally {
