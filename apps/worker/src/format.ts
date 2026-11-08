@@ -6,6 +6,7 @@ export function sanitizeReply(text: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .replace(/^```[\w-]*\n?/gm, "")
     .replace(/```$/gm, "")
+    .replace(/`([^`\n]+)`/g, "$1")
     .trim();
 }
 

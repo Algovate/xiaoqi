@@ -9,6 +9,10 @@ describe("sanitizeReply", () => {
   it("converts list markers", () => {
     expect(sanitizeReply("- a\n- b")).toBe("• a\n• b");
   });
+
+  it("removes inline backticks", () => {
+    expect(sanitizeReply("用 `a, b = b, a + b` 更新")).toBe("用 a, b = b, a + b 更新");
+  });
 });
 
 describe("chunkReply", () => {
