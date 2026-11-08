@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { AppConfig, DbHandle, Logger } from "@xiaoqi/core";
 import {
   AppError,
+  imageMimeOf,
   messages,
   outboundMessages,
   runs,
@@ -61,6 +62,23 @@ export async function buildServer(deps: ServerDeps) {
     bodyLimit: 8 * 1024 * 1024,
   });
 
+  async function loadRunAndSource(runId: string, replyToMessageId: string) {
+    const runRows = await db.select().from(runs).where(eq(runs.id, runId)).limit(1);
+    const run = runRows[0];
+    if (!run) throw new AppError({ code: "RUN_NOT_FOUND", message: "run not found", httpStatus: 404 });
+
+    const messageRows = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, Number(replyToMessageId)))
+      .limit(1);
+    const source = messageRows[0];
+    if (!source) {
+      throw new AppError({ code: "MESSAGE_NOT_FOUND", message: "source message not found", httpStatus: 404 });
+    }
+    return { run, source };
+  }
+
   app.addHook("onRequest", async (req, reply) => {
     if (!req.url.startsWith("/internal/")) return;
     if (req.headers["x-xiaoqi-internal"] !== config.internalToken) {
@@ -89,19 +107,7 @@ export async function buildServer(deps: ServerDeps) {
     }
     const input = parsed.data;
 
-    const runRows = await db.select().from(runs).where(eq(runs.id, input.runId)).limit(1);
-    const run = runRows[0];
-    if (!run) throw new AppError({ code: "RUN_NOT_FOUND", message: "run not found", httpStatus: 404 });
-
-    const messageRows = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.id, Number(input.replyToMessageId)))
-      .limit(1);
-    const source = messageRows[0];
-    if (!source) {
-      throw new AppError({ code: "MESSAGE_NOT_FOUND", message: "source message not found", httpStatus: 404 });
-    }
+    const { run, source } = await loadRunAndSource(input.runId, input.replyToMessageId);
 
     await db
       .insert(outboundMessages)
@@ -191,19 +197,7 @@ export async function buildServer(deps: ServerDeps) {
       throw new AppError({ code: "INVALID_IMAGE", message: "image bytes do not match mime", httpStatus: 400 });
     }
 
-    const runRows = await db.select().from(runs).where(eq(runs.id, input.runId)).limit(1);
-    const run = runRows[0];
-    if (!run) throw new AppError({ code: "RUN_NOT_FOUND", message: "run not found", httpStatus: 404 });
-
-    const messageRows = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.id, Number(input.replyToMessageId)))
-      .limit(1);
-    const source = messageRows[0];
-    if (!source) {
-      throw new AppError({ code: "MESSAGE_NOT_FOUND", message: "source message not found", httpStatus: 404 });
-    }
+    const { run, source } = await loadRunAndSource(input.runId, input.replyToMessageId);
 
     const storageKey = path.basename(input.filename);
     await db
@@ -364,24 +358,4 @@ export async function buildServer(deps: ServerDeps) {
   });
 
   return app;
-}
-
-function imageMimeOf(buf: Buffer): string | null {
-  if (
-    buf.length >= 8 &&
-    buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-  ) {
-    return "image/png";
-  }
-  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-    return "image/jpeg";
-  }
-  if (
-    buf.length >= 12 &&
-    buf.subarray(0, 4).toString("ascii") === "RIFF" &&
-    buf.subarray(8, 12).toString("ascii") === "WEBP"
-  ) {
-    return "image/webp";
-  }
-  return null;
 }

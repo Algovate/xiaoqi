@@ -60,13 +60,7 @@ export async function sendText(
   text: string,
   clientId: string,
 ): Promise<{ wxMessageId: string }> {
-  const client = new ILinkClient({
-    baseUrl: ctx.account.baseUrl,
-    token: ctx.botToken,
-    appId: config.ILINK_APP_ID,
-    clientVersion: config.ILINK_APP_VERSION,
-    cdnBaseUrl: config.ILINK_CDN_BASE,
-  });
+  const client = createClient(config, ctx);
   const resp = await client.sendText({
     toUserId: ctx.target,
     contextToken: ctx.contextToken,
@@ -83,13 +77,7 @@ export async function sendImage(
   mime: string,
   clientId: string,
 ): Promise<{ wxMessageId: string }> {
-  const client = new ILinkClient({
-    baseUrl: ctx.account.baseUrl,
-    token: ctx.botToken,
-    appId: config.ILINK_APP_ID,
-    clientVersion: config.ILINK_APP_VERSION,
-    cdnBaseUrl: config.ILINK_CDN_BASE,
-  });
+  const client = createClient(config, ctx);
   const resp = await client.sendImage({
     toUserId: ctx.target,
     contextToken: ctx.contextToken,
@@ -128,6 +116,16 @@ export async function recordOutbound(
       createdAt: new Date(),
     })
     .onConflictDoNothing();
+}
+
+function createClient(config: AppConfig, ctx: SendContext): ILinkClient {
+  return new ILinkClient({
+    baseUrl: ctx.account.baseUrl,
+    token: ctx.botToken,
+    appId: config.ILINK_APP_ID,
+    clientVersion: config.ILINK_APP_VERSION,
+    cdnBaseUrl: config.ILINK_CDN_BASE,
+  });
 }
 
 function wxMessageIdOf(resp: Record<string, unknown>): string {

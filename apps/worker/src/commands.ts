@@ -106,14 +106,25 @@ export async function handleCommand(
   }
 }
 
+const MEDIA_OUTBOUND_DISABLED = "发图能力未开启：设置 MEDIA_OUTBOUND_ENABLED=true 后重启 worker。";
+
+function setMediaEffect(
+  effects: CommandEffects,
+  file: { path: string; mime: string },
+): void {
+  effects.media = {
+    path: file.path,
+    mime: file.mime,
+    filename: path.basename(file.path),
+  };
+}
+
 async function chartCommand(
   deps: { config: AppConfig; logger?: Logger },
   args: string,
   effects: CommandEffects,
 ): Promise<string> {
-  if (!deps.config.MEDIA_OUTBOUND_ENABLED) {
-    return "发图能力未开启：设置 MEDIA_OUTBOUND_ENABLED=true 后重启 worker。";
-  }
+  if (!deps.config.MEDIA_OUTBOUND_ENABLED) return MEDIA_OUTBOUND_DISABLED;
   if (!args.trim()) return CHART_USAGE;
 
   const parsed = parseChartCommand(args);
@@ -126,7 +137,7 @@ async function chartCommand(
       await fsp.unlink(file.path).catch(() => undefined);
       return `图表太大（${Math.round(file.size / 1024)}KB），减少数据点再试。`;
     }
-    effects.media = { path: file.path, mime: file.mime, filename: path.basename(file.path) };
+    setMediaEffect(effects, file);
     return `图表：${parsed.spec.title}`;
   } catch (err) {
     deps.logger?.warn({ err }, "chart render failed");
@@ -139,6 +150,7 @@ async function mermaidCommand(
   args: string,
   effects: CommandEffects,
 ): Promise<string> {
+  if (!deps.config.MEDIA_OUTBOUND_ENABLED) return MEDIA_OUTBOUND_DISABLED;
   if (!deps.config.MERMAID_ENABLED) {
     return "Mermaid 渲染未开启：设置 MERMAID_ENABLED=true 后重启 worker。";
   }
@@ -147,7 +159,7 @@ async function mermaidCommand(
   try {
     const outputDir = path.resolve(deps.config.MEDIA_DIR, "outbound");
     const file = await renderMermaidPng(deps.config, args, outputDir);
-    effects.media = { path: file.path, mime: file.mime, filename: path.basename(file.path) };
+    setMediaEffect(effects, file);
     return "Mermaid 图已生成。";
   } catch (err) {
     deps.logger?.warn({ err }, "mermaid render failed");

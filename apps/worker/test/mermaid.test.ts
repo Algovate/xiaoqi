@@ -76,6 +76,22 @@ describe("renderMermaidPng", () => {
 });
 
 describe("handleCommand /mermaid", () => {
+  it("refuses when image outbound is disabled", async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "xiaoqi-mermaid-off-"));
+    try {
+      const text = await handleCommand(
+        { db: {} as never, config: configFor(dir, { MEDIA_OUTBOUND_ENABLED: false }) },
+        { id: 1, conversationKey: "dm:test", senderId: "u" } as unknown as MessageRow,
+        null,
+        { name: "mermaid", args: "graph LR\n A-->B", raw: "" },
+        {},
+      );
+      expect(text).toContain("发图能力未开启");
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("renders a diagram and sets the media effect", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(PNG, { status: 200, headers: { "content-type": "image/png" } }),

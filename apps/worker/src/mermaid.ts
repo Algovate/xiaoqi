@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import type { AppConfig } from "@xiaoqi/core";
+import { imageMimeOf } from "@xiaoqi/core";
 import type { ToolDefinition } from "./llm.js";
 
 const MAX_CODE_CHARS = 4_000;
@@ -40,6 +41,7 @@ export async function renderMermaidPng(
   rawCode: string,
   outputDir: string,
 ): Promise<{ path: string; mime: string; size: number }> {
+  if (!config.MEDIA_OUTBOUND_ENABLED) throw new Error("图片发送未启用");
   if (!config.MERMAID_ENABLED) throw new Error("Mermaid 渲染未启用");
   const code = rawCode.trim();
   if (!code) throw new Error("Mermaid 源码为空");
@@ -76,24 +78,4 @@ export async function renderMermaidPng(
   const filePath = path.join(outputDir, `mermaid-${crypto.randomUUID()}.${ext}`);
   await fsp.writeFile(filePath, data);
   return { path: filePath, mime, size: data.length };
-}
-
-function imageMimeOf(buf: Buffer): string | null {
-  if (
-    buf.length >= 8 &&
-    buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-  ) {
-    return "image/png";
-  }
-  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
-    return "image/jpeg";
-  }
-  if (
-    buf.length >= 12 &&
-    buf.subarray(0, 4).toString("ascii") === "RIFF" &&
-    buf.subarray(8, 12).toString("ascii") === "WEBP"
-  ) {
-    return "image/webp";
-  }
-  return null;
 }

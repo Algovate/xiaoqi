@@ -99,9 +99,21 @@ export async function generateAnswer(
     const webSearchEnabled =
       isWebSearchEnabled(config) && (forceSearch || config.WEB_SEARCH_AUTO);
     const chartEnabled = config.MEDIA_OUTBOUND_ENABLED;
-    const mermaidEnabled = config.MERMAID_ENABLED;
+    const mermaidEnabled = config.MERMAID_ENABLED && chartEnabled;
     const searchSession: WebSearchSession = { sources: [], nextIndex: 1 };
     const mediaSession: { media?: { path: string; mime: string; filename: string } } = {};
+
+    async function acceptMedia(file: { path: string; mime: string }): Promise<void> {
+      if (mediaSession.media) {
+        await fsp.unlink(mediaSession.media.path).catch(() => undefined);
+      }
+      mediaSession.media = {
+        path: file.path,
+        mime: file.mime,
+        filename: path.basename(file.path),
+      };
+    }
+
     const tools: ToolDefinition[] = [];
     if (webSearchEnabled) tools.push(WEB_SEARCH_TOOL);
     if (chartEnabled) tools.push(RENDER_CHART_TOOL);
@@ -135,14 +147,7 @@ export async function generateAnswer(
                       await fsp.unlink(file.path).catch(() => undefined);
                       return "图表太大，减少数据点再试。";
                     }
-                    if (mediaSession.media) {
-                      await fsp.unlink(mediaSession.media.path).catch(() => undefined);
-                    }
-                    mediaSession.media = {
-                      path: file.path,
-                      mime: file.mime,
-                      filename: path.basename(file.path),
-                    };
+                    await acceptMedia(file);
                     return `图表已生成：${spec.title}。系统会先发图片，再发你的文字说明；请用一句话说明图表内容。`;
                   } catch (err) {
                     logger.warn({ err, runId }, "chart render failed");
@@ -155,14 +160,7 @@ export async function generateAnswer(
                   try {
                     const outputDir = path.resolve(config.MEDIA_DIR, "outbound");
                     const file = await renderMermaidPng(config, code, outputDir);
-                    if (mediaSession.media) {
-                      await fsp.unlink(mediaSession.media.path).catch(() => undefined);
-                    }
-                    mediaSession.media = {
-                      path: file.path,
-                      mime: file.mime,
-                      filename: path.basename(file.path),
-                    };
+                    await acceptMedia(file);
                     return "Mermaid 图已生成。系统会先发图片，再发你的文字说明；请用一句话说明架构或流程。";
                   } catch (err) {
                     logger.warn({ err, runId }, "mermaid render failed");
