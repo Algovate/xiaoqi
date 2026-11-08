@@ -90,9 +90,9 @@ export const CHART_USAGE = `用法：
 const MAX_POINTS = 12;
 const MAX_TITLE_CHARS = 60;
 const MAX_LABEL_CHARS = 20;
-const WIDTH = 900;
+const WIDTH = 800;
 const HEIGHT = 640;
-const MARGIN = { top: 96, right: 44, bottom: 96, left: 80 };
+const MARGIN = { top: 96, right: 36, bottom: 96, left: 72 };
 const COLORS = ["#4f7cff", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16"];
 
 export function parseChartCommand(raw: string): ParseChartResult {
@@ -238,8 +238,10 @@ function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number;
     );
   }
 
+  const labelFont = spec.points.length > 8 ? 16 : 19;
+
   if (spec.type === "bar") {
-    const barWidth = Math.min(step * 0.62, 110);
+    const barWidth = Math.min(step * 0.62, 100);
     spec.points.forEach((point, i) => {
       const cx = plot.x + step * (i + 0.5);
       const height = (point.value / max) * plot.height;
@@ -251,7 +253,7 @@ function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number;
       lines.push(
         `<text x="${round(cx)}" y="${round(y - 10)}" text-anchor="middle" font-size="20" font-weight="600" fill="#374151">${formatNumber(point.value)}</text>`,
       );
-      lines.push(xLabel(cx, plot.y + plot.height + 34, point.label));
+      lines.push(xLabel(cx, plot.y + plot.height + 34, point.label, labelFont));
     });
   } else {
     const points = spec.points.map((point, i) => {
@@ -267,7 +269,7 @@ function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number;
       lines.push(
         `<text x="${round(p.cx)}" y="${round(p.cy - 14)}" text-anchor="middle" font-size="19" font-weight="600" fill="#374151">${formatNumber(p.point.value)}</text>`,
       );
-      lines.push(xLabel(p.cx, plot.y + plot.height + 34, p.point.label));
+      lines.push(xLabel(p.cx, plot.y + plot.height + 34, p.point.label, labelFont));
     }
   }
 
@@ -279,9 +281,9 @@ function axisChart(spec: ChartSpec, plot: { x: number; y: number; width: number;
 
 function pieChart(spec: ChartSpec, plot: { x: number; y: number; width: number; height: number }): string {
   const total = spec.points.reduce((sum, p) => sum + p.value, 0);
-  const cx = plot.x + plot.width * 0.30;
+  const cx = plot.x + plot.width * 0.28;
   const cy = plot.y + plot.height / 2 + 10;
-  const radius = 190;
+  const radius = 165;
   let angle = -Math.PI / 2;
   const parts: string[] = [];
 
@@ -307,32 +309,32 @@ function pieChart(spec: ChartSpec, plot: { x: number; y: number; width: number; 
       const lx = cx + radius * 0.62 * Math.cos(mid);
       const ly = cy + radius * 0.62 * Math.sin(mid);
       parts.push(
-        `<text x="${round(lx)}" y="${round(ly + 6)}" text-anchor="middle" font-size="20" font-weight="600" fill="#ffffff">${formatPercent(point.value / total)}</text>`,
+        `<text x="${round(lx)}" y="${round(ly + 6)}" text-anchor="middle" font-size="18" font-weight="600" fill="#ffffff">${formatPercent(point.value / total)}</text>`,
       );
     }
     angle = end;
   });
 
-  const legendX = plot.x + plot.width * 0.62;
+  const legendX = plot.x + plot.width * 0.56;
   const legendTop = plot.y + 64;
   spec.points.forEach((point, i) => {
     const y = legendTop + i * 44;
-    parts.push(`<rect x="${round(legendX)}" y="${y - 20}" width="20" height="20" rx="4" fill="${COLORS[i % COLORS.length]}"/>`);
-    const label = point.label.length > 10 ? `${point.label.slice(0, 9)}…` : point.label;
+    parts.push(`<rect x="${round(legendX)}" y="${y - 19}" width="19" height="19" rx="4" fill="${COLORS[i % COLORS.length]}"/>`);
+    const label = point.label.length > 8 ? `${point.label.slice(0, 7)}…` : point.label;
     parts.push(
-      `<text x="${round(legendX + 32)}" y="${y}" font-size="20" fill="#374151">${escapeXml(label)}</text>`,
+      `<text x="${round(legendX + 30)}" y="${y}" font-size="18" fill="#374151">${escapeXml(label)}</text>`,
     );
     parts.push(
-      `<text x="${round(plot.x + plot.width)}" y="${y}" text-anchor="end" font-size="19" fill="#6b7280">${formatNumber(point.value)} · ${formatPercent(point.value / total)}</text>`,
+      `<text x="${round(plot.x + plot.width)}" y="${y}" text-anchor="end" font-size="17" fill="#6b7280">${formatNumber(point.value)} · ${formatPercent(point.value / total)}</text>`,
     );
   });
 
   return parts.join("\n    ");
 }
 
-function xLabel(cx: number, y: number, label: string): string {
-  const display = label.length > 12 ? `${label.slice(0, 11)}…` : label;
-  return `<text x="${round(cx)}" y="${round(y)}" text-anchor="middle" font-size="19" fill="#4b5563">${escapeXml(display)}</text>`;
+function xLabel(cx: number, y: number, label: string, fontSize: number): string {
+  const display = label.length > 10 ? `${label.slice(0, 9)}…` : label;
+  return `<text x="${round(cx)}" y="${round(y)}" text-anchor="middle" font-size="${fontSize}" fill="#4b5563">${escapeXml(display)}</text>`;
 }
 
 function niceMax(value: number): number {
