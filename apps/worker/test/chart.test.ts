@@ -3,7 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AppConfig, MessageRow } from "@xiaoqi/core";
-import { buildChartSvg, parseChartCommand, renderChartPng } from "../src/chart.js";
+import {
+  buildChartSvg,
+  chartSpecFromTool,
+  parseChartCommand,
+  renderChartPng,
+  RENDER_CHART_TOOL,
+} from "../src/chart.js";
 import { handleCommand } from "../src/commands.js";
 
 describe("parseChartCommand", () => {
@@ -36,6 +42,44 @@ describe("parseChartCommand", () => {
     expect(parseChartCommand("bar 一月").ok).toBe(false);
     expect(parseChartCommand("bar").ok).toBe(false);
     expect(parseChartCommand("scatter 一月=1").ok).toBe(false);
+  });
+});
+
+describe("chartSpecFromTool", () => {
+  it("normalizes a valid tool call", () => {
+    expect(
+      chartSpecFromTool({
+        type: "bar",
+        title: " 月销量 ",
+        data: [
+          { label: "一月", value: 12 },
+          { label: "二月", value: 18 },
+        ],
+      }),
+    ).toEqual({
+      type: "bar",
+      title: "月销量",
+      points: [
+        { label: "一月", value: 12 },
+        { label: "二月", value: 18 },
+      ],
+    });
+  });
+
+  it("rejects invalid tool data", () => {
+    expect(chartSpecFromTool({ type: "scatter", data: [{ label: "A", value: 1 }] })).toBeNull();
+    expect(chartSpecFromTool({ type: "bar", data: [] })).toBeNull();
+    expect(chartSpecFromTool({ type: "bar", data: [{ label: "A", value: -1 }] })).toBeNull();
+    expect(
+      chartSpecFromTool({
+        type: "pie",
+        data: Array.from({ length: 9 }, (_, i) => ({ label: `L${i}`, value: 1 })),
+      }),
+    ).toBeNull();
+  });
+
+  it("exposes the render_chart tool schema", () => {
+    expect(RENDER_CHART_TOOL.function.name).toBe("render_chart");
   });
 });
 

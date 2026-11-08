@@ -125,6 +125,7 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 /chart pie 流量占比 | 搜索=60,直接=25,其他=15
 ```
 
+- 也可以直接说“画一个柱状图：一月 12，二月 18”，模型会调用 `render_chart`。
 - PNG 渲染使用 macOS 自带 `sips`；Linux 上会失败并回退文本提示。
 - `MEDIA_OUTBOUND_ENABLED=false` 可完全关闭；单图上限 `MEDIA_OUTBOUND_MAX_BYTES`。
 - 依赖最近一次入站消息的 `context_token`；主动推送图片可能失败。

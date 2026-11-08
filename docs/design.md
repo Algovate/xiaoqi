@@ -114,6 +114,7 @@ getupdates
 ### 3.7 数据图表 / 图片出站
 
 - `/chart bar|line|pie 标题 | 标签=数值,...` 由 worker 解析并生成 SVG，再用 macOS `sips` 转 PNG。
+- 模型也可通过 `render_chart` 工具自然语言触发；工具参数校验后才渲染，图片在回答后发送。
 - 图片通过 gateway `/internal/v1/send-image`（内部 base64）发送，不经过任意文件路径。
 - gateway 调 iLink `getuploadurl` → AES-128-ECB/PKCS#7 加密 → CDN POST → `sendmessage` 的 `image_item`。
 - 依赖最近入站消息的 `context_token`；发送失败回退文本提示，不阻塞原命令。
@@ -135,7 +136,7 @@ getupdates
 | `/remind` + 定时发送 | ✅ |
 | 知识库关键词检索 + `kb:ingest` | ✅ |
 | 联网搜索（DeepSeek Search，模型按需调用） | ✅ |
-| 数据图表 + 图片出站（`/chart`，iLink CDN） | ✅ |
+| 数据图表 + 图片出站（`/chart`、`render_chart`，iLink CDN） | ✅ |
 | Admin 仪表盘 + 每日 token 预算 | ✅ |
 | Prometheus `/metrics` + 预算 Webhook | ✅ |
 | Codex / DSH runner + resume + diff | ✅ |

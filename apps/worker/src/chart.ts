@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import type { ToolDefinition } from "./llm.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,6 +18,64 @@ export interface ChartSpec {
   type: ChartType;
   title: string;
   points: ChartPoint[];
+}
+
+export const RENDER_CHART_TOOL: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "render_chart",
+    description:
+      "生成柱状图、折线图或饼图并发送图片。只有用户明确要求画图且提供了标签和数值时调用；不要编造数据。",
+    parameters: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["bar", "line", "pie"], description: "图表类型" },
+        title: { type: "string", description: "图表标题，最多 60 字" },
+        data: {
+          type: "array",
+          description: "数据点，1-12 个；饼图最多 8 个",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "标签，最多 20 字" },
+              value: { type: "number", minimum: 0, description: "非负数值" },
+            },
+            required: ["label", "value"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["type", "title", "data"],
+      additionalProperties: false,
+    },
+  },
+};
+
+export function chartSpecFromTool(args: Record<string, unknown>): ChartSpec | null {
+  const type = normalizeType(typeof args.type === "string" ? args.type : "");
+  if (!type) return null;
+
+  const rawTitle = typeof args.title === "string" ? args.title.trim().replace(/\s+/g, " ") : "";
+  const title = rawTitle ? rawTitle.slice(0, MAX_TITLE_CHARS) : "数据图表";
+  const rawData = Array.isArray(args.data) ? args.data : [];
+  if (rawData.length === 0 || rawData.length > MAX_POINTS) return null;
+
+  const points: ChartPoint[] = [];
+  for (const item of rawData) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const record = item as Record<string, unknown>;
+    const label =
+      typeof record.label === "string" ? record.label.trim().replace(/\s+/g, " ") : "";
+    const value = typeof record.value === "number" ? record.value : Number.NaN;
+    if (!label || label.length > MAX_LABEL_CHARS) return null;
+    if (!Number.isFinite(value) || value < 0) return null;
+    points.push({ label, value });
+  }
+
+  if (type === "pie" && points.length > 8) return null;
+  if (type === "pie" && points.reduce((sum, p) => sum + p.value, 0) <= 0) return null;
+
+  return { type, title, points };
 }
 
 export type ParseChartResult =

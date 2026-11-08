@@ -17,7 +17,7 @@
 | M5c | DSH runner、`/dsh` | `2b53d50` |
 | 收尾 | 拆分 typing/task/runner、文档整理 | `7706ae4` / `09761c3` / `18bf977` |
 | Web Search | DeepSeek Search、按需工具循环、`/search` | — |
-| Charts | `/chart` 数据图表、iLink 图片出站 | — |
+| Charts | `/chart`、`render_chart` 数据图表、iLink 图片出站 | — |
 
 ## 已归档
 

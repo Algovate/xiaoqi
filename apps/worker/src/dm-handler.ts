@@ -262,6 +262,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
     let promptTokens = 0;
     let completionTokens = 0;
     let model = config.LLM_MODEL;
+    let answerMedia: { path: string; mime: string; filename: string } | undefined;
 
     {
       const answer = await generateAnswer({ config, db, pool, logger }, msg, run.id, run.traceId, user, {
@@ -273,6 +274,18 @@ export function createDmHandler(deps: DmHandlerDeps) {
       promptTokens = answer.promptTokens;
       completionTokens = answer.completionTokens;
       model = answer.model;
+      answerMedia = answer.media;
+    }
+
+    if (answerMedia) {
+      try {
+        await sendImage(run.id, msg, answerMedia);
+        await fsp.unlink(answerMedia.path).catch(() => undefined);
+      } catch (err) {
+        logger.warn({ err, runId: run.id }, "answer image send failed");
+        replyText += "\n\n（图片发送失败，稍后再试）";
+        errorCode = errorCode ?? "IMAGE_SEND_FAILED";
+      }
     }
 
     try {
