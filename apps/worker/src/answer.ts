@@ -140,7 +140,7 @@ export async function generateAnswer(
                       mime: file.mime,
                       filename: path.basename(file.path),
                     };
-                    return `图表已生成：${spec.title}。请用一句话说明图表内容；图片会随后发送。`;
+                    return `图表已生成：${spec.title}。系统会先发图片，再发你的文字说明；请用一句话说明图表内容。`;
                   } catch (err) {
                     logger.warn({ err, runId }, "chart render failed");
                     return `图表生成失败：${err instanceof Error ? err.message : String(err)}`;
