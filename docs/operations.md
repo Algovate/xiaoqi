@@ -63,6 +63,9 @@ x-admin-token: <ADMIN_TOKEN>
 | `MERMAID_RENDER_BASE_URL` |  | 默认 `https://mermaid.ink` |
 | `MERMAID_TIMEOUT_MS` |  | 默认 30000 |
 | `MAX_DAILY_TOKENS` |  | 默认 100000 |
+| `ATTACHMENT_SUMMARY_ENABLED` |  | 默认 `true`；长附件分块摘要 |
+| `ATTACHMENT_SUMMARY_THRESHOLD_CHARS` |  | 默认 20000 |
+| `ATTACHMENT_SUMMARY_MAX_CHUNKS` |  | 默认 8 |
 | `ALERT_WEBHOOK_URL` |  | 企业微信 Webhook |
 | `OCR_ENABLED` |  | `auto/true/false` |
 | `CODEX_BIN` |  | 默认 `codex` |
@@ -231,6 +234,7 @@ pnpm ocr:build
 | OCR 没结果 | 确认 `pnpm ocr:build`、`OCR_ENABLED=auto` |
 | 知识库搜不到 | 运行 `pnpm kb:ingest`；当前是关键词检索，不是语义检索 |
 | 发 .md/.txt 提示暂不支持 | 确认是 UTF-8 文本；重新发送一次，worker 会按扩展名解析 |
+| 长文档总结不完整 | 默认最多 8 段、每段约 1.2-3 万字符；看 `long attachment summarized` 日志，必要时调大 `ATTACHMENT_SUMMARY_MAX_CHUNKS` |
 | 联网搜索不触发 | 确认 `WEB_SEARCH_ENABLED`/`WEB_SEARCH_AUTO`；直接发 `/search <问题>`；看 `xiaoqi_web_search_total` |
 | 搜索报 401/402 | 检查 `LLM_API_KEY` 与 DeepSeek 账户余额；Search 复用同一个 key |
 | 搜索报 400 / 模型不调用工具 | 确认 `LLM_MODEL` 支持 Tool Calls；可改用 `deepseek-flash` 或 `deepseek-v4-pro` |

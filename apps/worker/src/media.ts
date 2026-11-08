@@ -8,8 +8,8 @@ import { describeImage } from "./llm.js";
 import { ocrFile } from "./ocr.js";
 
 const MAX_BYTES = 20 * 1024 * 1024;
-const MAX_TEXT = 40_000;
-const MAX_CONTEXT_TEXT = 20_000;
+const MAX_TEXT = 200_000;
+const MAX_CONTEXT_TEXT = 200_000;
 const TEXT_FILE_EXTS = new Set(["txt", "md", "csv", "tsv", "json", "log"]);
 
 interface RawItem {

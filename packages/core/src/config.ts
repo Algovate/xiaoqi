@@ -33,6 +33,9 @@ const EnvSchema = z.object({
   API_HOST: z.string().min(1).default("127.0.0.1"),
   ADMIN_TOKEN: z.string().default(""),
   MAX_DAILY_TOKENS: z.coerce.number().int().positive().default(100_000),
+  ATTACHMENT_SUMMARY_ENABLED: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  ATTACHMENT_SUMMARY_THRESHOLD_CHARS: z.coerce.number().int().positive().default(20_000),
+  ATTACHMENT_SUMMARY_MAX_CHUNKS: z.coerce.number().int().positive().default(8),
   ALERT_WEBHOOK_URL: z.string().default(""),
 
   CODEX_BIN: z.string().min(1).default("codex"),

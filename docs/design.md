@@ -86,6 +86,7 @@ getupdates
 - PDF/DOCX/TXT/MD：`unpdf` / `mammoth` / 直接读取。
 - 文本类附件按魔数 + 扩展名识别（`.md`/`.txt`/`.csv`/`.json`/`.log`/`.tsv`）。
 - 提取文本注入**当前轮**；最近 10 分钟附件会补入追问上下文；持久知识库走 `knowledge/`。
+- 超过 `ATTACHMENT_SUMMARY_THRESHOLD_CHARS` 的文本先分块摘要（并发 3、最多 8 段），摘要 token 计入预算。
 
 ### 3.4 提醒
 

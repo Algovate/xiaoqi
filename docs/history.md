@@ -20,6 +20,7 @@
 | Charts | `/chart`、`render_chart`、多系列、堆叠柱、CSV、iLink 图片出站 | — |
 | Mermaid | `/mermaid`、`render_mermaid`、mermaid.ink 渲染 | — |
 | File Outbound | `sendFile`、`/export csv`、文件 item | — |
+| Attachments | 扩展名识别、最近附件追问、长文档分块摘要 | — |
 
 ## 已归档
 

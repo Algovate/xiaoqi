@@ -6,6 +6,7 @@ import { buildContext } from "./context.js";
 import { searchKnowledge } from "./kb.js";
 import { chat, type ChatMessage, type ChatResult, type ToolDefinition } from "./llm.js";
 import { extractAttachments, recentAttachmentText } from "./media.js";
+import { digestAttachment } from "./attachment-summary.js";
 import { sanitizeReply } from "./format.js";
 import { chatWithTools } from "./agent.js";
 import { chartSpecFromTool, RENDER_CHART_TOOL } from "./chart.js";
@@ -65,6 +66,22 @@ export async function generateAnswer(
       });
       if (recent) attachmentText = `[最近消息的附件内容]\n${recent}`;
     }
+
+    let attachmentPromptTokens = 0;
+    let attachmentCompletionTokens = 0;
+    if (attachmentText) {
+      const digest = await digestAttachment(config, attachmentText, logger, runId);
+      attachmentText = digest.text;
+      attachmentPromptTokens = digest.promptTokens;
+      attachmentCompletionTokens = digest.completionTokens;
+      if (digest.chunks > 0) {
+        logger.info(
+          { runId, chunks: digest.chunks, chars: digest.text.length },
+          "long attachment summarized",
+        );
+      }
+    }
+
     const currentQuestion =
       opts.query?.trim() || msg.text?.trim() || (attachmentText ? "请分析我发的附件" : "（非文本消息）");
 
@@ -207,8 +224,8 @@ export async function generateAnswer(
     return {
       text,
       errorCode: null,
-      promptTokens: result.promptTokens,
-      completionTokens: result.completionTokens,
+      promptTokens: result.promptTokens + attachmentPromptTokens,
+      completionTokens: result.completionTokens + attachmentCompletionTokens,
       model: result.model,
       media: mediaSession.media,
     };
