@@ -17,6 +17,7 @@ import { sendTextChunks } from "./send.js";
 import { dailyTokensUsed } from "./budget.js";
 import { maybeAlertBudget } from "./alerts.js";
 import { coalesceInbound } from "./inbound.js";
+import { isBudgetExempt } from "./command-registry.js";
 import { deliverAttachments } from "./deliver.js";
 
 interface DmJob {
@@ -126,13 +127,7 @@ export function createDmHandler(deps: DmHandlerDeps) {
     const searchQuery = getSearchQuery(command);
     const forceSearch = searchQuery !== null;
 
-    if (
-      msg.userId &&
-      !(
-        command &&
-        ["help", "whoami", "reset", "remind", "chart", "mermaid", "export"].includes(command.name)
-      )
-    ) {
+    if (msg.userId && !isBudgetExempt(command?.name)) {
       try {
         const used = await dailyTokensUsed(pool, msg.userId);
         await maybeAlertBudget(config, logger, {

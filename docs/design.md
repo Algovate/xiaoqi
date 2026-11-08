@@ -131,7 +131,7 @@ getupdates
 
 - iLink `sendFile` 复用 `getuploadurl` → AES-128-ECB/PKCS#7 → CDN → `sendmessage(file_item)`。
 - gateway `/internal/v1/send-file` 接受内部 base64，校验文件名/大小，写入 `outbound_messages(kind=file)`。
-- `/export csv` 导出当前对话最近 500 条消息，UTF-8 BOM，走文件出站。
+- `/export` 导出当前对话最近 500 条消息，UTF-8 BOM，走文件出站。
 - 文件上限 `MEDIA_OUTBOUND_MAX_BYTES`，失败回退文本。
 - 回答中的 Markdown 代码块自动落成 `.py`/`.js`/`.ts` 等文件发送，避免微信折叠单换行、破坏代码缩进；聊天只留说明。
 
@@ -168,7 +168,7 @@ getupdates
 | 联网搜索（DeepSeek Search，模型按需调用） | ✅ |
 | 数据图表 + 图片出站（`/chart`、`render_chart`，iLink CDN） | ✅ |
 | Mermaid 架构/流程图（`/mermaid`、`render_mermaid`） | ✅ |
-| 通用文件出站 + `/export csv` | ✅ |
+| 通用文件出站 + `/export` | ✅ |
 | 交互式 HTML（`render_html`） | ✅ |
 | Admin 仪表盘 + 每日 token 预算 | ✅ |
 | Prometheus `/metrics` + 预算 Webhook | ✅ |
@@ -181,14 +181,14 @@ getupdates
 
 | 命令 | 行为 |
 |---|---|
-| `/help` | 用法 |
+| `/help` / `/help all` / `/help <命令>` | 常用命令 / 全部命令 / 单命令用法 |
 | `/whoami` | 当前 wx user id |
 | `/reset` | 清空当前对话上下文（设置 reset_at） |
 | `/summary` | 总结最近对话并写摘要 |
 | `/search <问题>` | 强制联网搜索并回答（带来源） |
 | `/chart <类型> <标题> \| 标签=数值,...` | 生成柱状/折线/饼图并发送图片 |
 | `/mermaid <Mermaid 源码>` | 生成架构/流程图并发送图片 |
-| `/export csv` | 导出当前对话最近 500 条消息并发送 CSV |
+| `/export`（`/export csv` 兼容） | 导出当前对话最近 500 条消息并发送 CSV |
 | `/remind <时间> <内容>` | 定时提醒 |
 | `/codex <repo> <任务>` | 启动 Codex |
 | `/codex resume <id> <指令>` | 继续 Codex session |
@@ -196,6 +196,8 @@ getupdates
 | `/dsh <repo> <任务>` | 启动 DSH |
 | `/dsh list/status/stop` | 任务管理 |
 
+> 默认 `/help` 只列常用命令；`/search`、`/chart`、`/mermaid`、`/whoami`、`/codex`、`/dsh` 是高级命令，用 `/help all` 查看。
+>
 > `/translate`、`/privacy` 尚未实现，不要在文档/回答里承诺。
 
 ---

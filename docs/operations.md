@@ -90,11 +90,11 @@ openssl rand -hex 24      # INTERNAL_TOKEN / ADMIN_TOKEN
 
 ```text
 /help
-/whoami
+/help all
+/export
 /reset
 /summary
 /search 今天上海天气
-/chart bar 月销量 | 一月=120,二月=180
 /remind 明天10点 交周报
 /codex list
 /codex xiaoqi 修复失败测试
@@ -142,7 +142,7 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 /chart stacked bar 总量 | 一月=12/8,二月=18/10 | 销量/成本
 /chart line 温度趋势 | 周一=12,周二=14
 /mermaid graph LR A[用户]-->B[网关]-->C[Worker]
-/export csv
+/export
 /chart pie 流量占比 | 搜索=60,直接=25,其他=15
 ```
 
@@ -189,11 +189,13 @@ WELCOME_MESSAGE="我是小栖，你的微信 AI 助理。\n直接发问题，或
 
 ### 文件出站 / CSV 导出
 
-`/export csv` 导出当前对话最近 500 条消息并发送文件：
+`/export` 导出当前对话最近 500 条消息并发送 CSV：
 
 ```text
-/export csv
+/export
 ```
+
+`/export csv` 也兼容。
 
 - 文件走 iLink `sendFile`（`file_item`），复用 `getuploadurl` 和 AES/CDN 流程。
 - CSV 使用 UTF-8 BOM，Excel 打开中文不乱码。
@@ -300,7 +302,7 @@ pnpm ocr:build
 | 搜索报 401/402 | 检查 `LLM_API_KEY` 与 DeepSeek 账户余额；Search 复用同一个 key |
 | 搜索报 400 / 模型不调用工具 | 确认 `LLM_MODEL` 支持 Tool Calls；可改用 `deepseek-flash` 或 `deepseek-v4-pro` |
 | 图表发送失败 | 确认 `MEDIA_OUTBOUND_ENABLED=true`、`sips` 可用；看 worker/gateway 日志和 `xiaoqi_send_total` |
-| 文件发送失败 | 检查 `MEDIA_OUTBOUND_ENABLED`、文件大小、gateway 日志；CSV 用 `/export csv` 再试 |
+| 文件发送失败 | 检查 `MEDIA_OUTBOUND_ENABLED`、文件大小、gateway 日志；CSV 用 `/export` 再试 |
 | 图片显示灰色/无法打开 | 检查 `aes_key` 是否为 base64(hex 字符串)、CDN 响应是否有 `x-encrypted-param` |
 | Mermaid 渲染失败 | 检查 `MERMAID_ENABLED`、`mermaid.ink` 网络、`MERMAID_TIMEOUT_MS`；看 worker 日志 |
 | 预算告警不发送 | 检查 `ALERT_WEBHOOK_URL`，以及是否已达到 50/80/100% |

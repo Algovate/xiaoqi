@@ -1,16 +1,13 @@
 import { and, desc, eq, gt } from "drizzle-orm";
-import fsp from "node:fs/promises";
-import path from "node:path";
 import type { AppConfig, Database, Logger, MessageRow, UserRow } from "@xiaoqi/core";
 import { conversationState, messages, reminders } from "@xiaoqi/core";
 import { formatShanghai, parseReminder } from "./time.js";
 import { chat } from "./llm.js";
 import { handleTaskCommand } from "./task-commands.js";
 import { isWebSearchEnabled } from "./web-search.js";
-import { CHART_USAGE, parseChartCommand } from "./chart.js";
-import { renderChartPng } from "./chart-render.js";
-import { MERMAID_USAGE, renderMermaidPng } from "./mermaid.js";
-import { toCsv } from "./csv.js";
+import { chartCommand, exportCommand, mermaidCommand } from "./media-commands.js";
+import { helpText } from "./command-registry.js";
+import type { CommandEffects } from "./command-types.js";
 
 export interface Command {
   name: string;
@@ -18,29 +15,7 @@ export interface Command {
   raw: string;
 }
 
-export interface CommandEffects {
-  media?: { path: string; mime: string; filename: string };
-  file?: { path: string; mime: string; filename: string };
-}
-
-export const HELP_TEXT = `我是小栖，你的微信 AI 助理。
-直接发问题，或发文件让我看。
-
-可用命令：
-/summary  总结最近对话
-/search 今天上海天气     联网搜索并回答
-/chart bar 月销量 | 一月=120,二月=180  生成图表
-/mermaid graph TD; A[用户]-->B[小栖]  画架构/流程图
-/export csv  导出最近对话
-/remind 明天10点 交周报  设置提醒
-/codex xiaoqi 修复测试  启动 Codex 任务
-/dsh xiaoqi 分析仓库    启动 DSH 任务
-/reset    清除上下文
-/whoami   查看你的 ID
-/help     显示这条帮助
-
-直接说“做一个交互式 BMI 计算器”，我会生成 HTML 交互页文件。
-问最新消息、天气、价格等时效问题时，我会自动联网搜索；也可以 /search 强制。`;
+export type { CommandEffects } from "./command-types.js";
 
 export function getSearchQuery(command: Command | null): string | null {
   if (!command || command.name !== "search" || !command.args) return null;
@@ -49,9 +24,10 @@ export function getSearchQuery(command: Command | null): string | null {
 
 export function parseCommand(text: string | null): Command | null {
   if (!text) return null;
-  const trimmed = text.trim();
+  let trimmed = text.trim();
+  if (trimmed.startsWith("／")) trimmed = `/${trimmed.slice(1)}`;
   if (!trimmed.startsWith("/")) return null;
-  const match = trimmed.match(/^\/([a-zA-Z]+)(?:\s+([\s\S]*))?$/);
+  const match = trimmed.match(/^\/([\p{L}\p{N}_-]+)(?:\s+([\s\S]*))?$/u);
   if (!match) return { name: "unknown", args: "", raw: trimmed };
   return { name: match[1]!.toLowerCase(), args: (match[2] ?? "").trim(), raw: trimmed };
 }
@@ -65,7 +41,7 @@ export async function handleCommand(
 ): Promise<string> {
   switch (command.name) {
     case "help":
-      return HELP_TEXT;
+      return helpText(command.args);
     case "whoami":
       return `你的用户 ID：${msg.senderId}`;
     case "reset":
@@ -109,111 +85,7 @@ export async function handleCommand(
       return `已设置提醒：${formatShanghai(parsed.runAt)}\n${parsed.text}`;
     }
     default:
-      return `不认识 /${command.name}。\n\n${HELP_TEXT}`;
-  }
-}
-
-const MEDIA_OUTBOUND_DISABLED = "媒体发送未开启：设置 MEDIA_OUTBOUND_ENABLED=true 后重启 worker。";
-
-function setMediaEffect(
-  effects: CommandEffects,
-  file: { path: string; mime: string },
-): void {
-  effects.media = {
-    path: file.path,
-    mime: file.mime,
-    filename: path.basename(file.path),
-  };
-}
-
-async function chartCommand(
-  deps: { config: AppConfig; logger?: Logger },
-  args: string,
-  effects: CommandEffects,
-): Promise<string> {
-  if (!deps.config.MEDIA_OUTBOUND_ENABLED) return MEDIA_OUTBOUND_DISABLED;
-  if (!args.trim()) return CHART_USAGE;
-
-  const parsed = parseChartCommand(args);
-  if (!parsed.ok) return parsed.error;
-
-  try {
-    const outputDir = path.resolve(deps.config.MEDIA_DIR, "outbound");
-    const file = await renderChartPng(parsed.spec, outputDir);
-    if (file.size > deps.config.MEDIA_OUTBOUND_MAX_BYTES) {
-      await fsp.unlink(file.path).catch(() => undefined);
-      return `图表太大（${Math.round(file.size / 1024)}KB），减少数据点再试。`;
-    }
-    setMediaEffect(effects, file);
-    return `图表：${parsed.spec.title}`;
-  } catch (err) {
-    deps.logger?.warn({ err }, "chart render failed");
-    return `图表生成失败：${err instanceof Error ? err.message : String(err)}`;
-  }
-}
-
-async function mermaidCommand(
-  deps: { config: AppConfig; logger?: Logger },
-  args: string,
-  effects: CommandEffects,
-): Promise<string> {
-  if (!deps.config.MEDIA_OUTBOUND_ENABLED) return MEDIA_OUTBOUND_DISABLED;
-  if (!deps.config.MERMAID_ENABLED) {
-    return "Mermaid 渲染未开启：设置 MERMAID_ENABLED=true 后重启 worker。";
-  }
-  if (!args.trim()) return MERMAID_USAGE;
-
-  try {
-    const outputDir = path.resolve(deps.config.MEDIA_DIR, "outbound");
-    const file = await renderMermaidPng(deps.config, args, outputDir);
-    setMediaEffect(effects, file);
-    return "Mermaid 图已生成。";
-  } catch (err) {
-    deps.logger?.warn({ err }, "mermaid render failed");
-    return `Mermaid 渲染失败：${err instanceof Error ? err.message : String(err)}`;
-  }
-}
-
-async function exportCommand(
-  deps: { db: Database; config: AppConfig; logger?: Logger },
-  msg: MessageRow,
-  args: string,
-  effects: CommandEffects,
-): Promise<string> {
-  if (!deps.config.MEDIA_OUTBOUND_ENABLED) return MEDIA_OUTBOUND_DISABLED;
-  if (args.trim().toLowerCase() !== "csv") return "用法：/export csv\n导出当前对话最近 500 条消息。";
-
-  const rows = await deps.db
-    .select({
-      createdAt: messages.createdAt,
-      direction: messages.direction,
-      itemType: messages.itemType,
-      text: messages.text,
-    })
-    .from(messages)
-    .where(eq(messages.conversationKey, msg.conversationKey))
-    .orderBy(desc(messages.createdAt))
-    .limit(500);
-
-  if (rows.length === 0) return "没有可导出的消息。";
-
-  const csv = `\uFEFF${toCsv(rows.reverse())}`;
-  const size = Buffer.byteLength(csv);
-  if (size > deps.config.MEDIA_OUTBOUND_MAX_BYTES) {
-    return `导出内容太大（${Math.round(size / 1024)}KB），减少消息再试。`;
-  }
-
-  try {
-    const outputDir = path.resolve(deps.config.MEDIA_DIR, "outbound");
-    await fsp.mkdir(outputDir, { recursive: true });
-    const filename = `xiaoqi-export-${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
-    const filePath = path.join(outputDir, filename);
-    await fsp.writeFile(filePath, csv, { mode: 0o600 });
-    effects.file = { path: filePath, mime: "text/csv", filename };
-    return `已导出最近 ${rows.length} 条消息为 CSV。`;
-  } catch (err) {
-    deps.logger?.warn({ err }, "csv export failed");
-    return `导出失败：${err instanceof Error ? err.message : String(err)}`;
+      return `不认识 /${command.name}。\n\n${helpText()}`;
   }
 }
 
